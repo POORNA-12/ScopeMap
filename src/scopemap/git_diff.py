@@ -127,13 +127,13 @@ def _merge_lines(records: dict[str, ChangedFile], lines: dict[str, list[int]]) -
 
 def changed_files_detailed(repo: Path, diff: str) -> list[ChangedFile]:
     """Normalize name-status plus line numbers into ChangedFile records."""
-    records = _parse_statuses(_run(repo, "diff", "--name-status", "-M", diff))
+    records = _parse_statuses(_run(repo, "diff", "--name-status", "-M", "--find-copies-harder", diff))
     return _merge_lines(records, changed_lines(repo, diff))
 
 
 def staged_files_detailed(repo: Path) -> list[ChangedFile]:
     """Normalize staged (cached) changes into ChangedFile records."""
-    records = _parse_statuses(_run(repo, "diff", "--name-status", "-M", "--cached"))
+    records = _parse_statuses(_run(repo, "diff", "--name-status", "-M", "--find-copies-harder", "--cached"))
     return _merge_lines(records, staged_lines(repo))
 
 
@@ -146,6 +146,33 @@ def untracked_files(repo: Path) -> list[str]:
 def toplevel(repo: Path) -> Path:
     """Return the repository top level for a path inside it."""
     return Path(_run(repo, "rev-parse", "--show-toplevel").strip())
+
+
+def resolve_ref(repo: Path, ref: str) -> str:
+    """Resolve a branch, tag, or SHA to a full commit hash, or raise."""
+    if not ref or ref.startswith("-"):
+        raise ValueError(f"invalid ref: {ref!r}")
+    try:
+        return _run(repo, "rev-parse", "--verify", f"{ref}^{{commit}}").strip()
+    except RuntimeError as error:
+        raise ValueError(f"unknown ref {ref!r}: {error}") from error
+
+
+def merge_base(repo: Path, first: str, second: str) -> str:
+    """Return the merge-base commit of two resolved SHAs."""
+    try:
+        return _run(repo, "merge-base", first, second).strip()
+    except RuntimeError as error:
+        raise ValueError(f"no merge base for {first[:8]} and {second[:8]}: {error}") from error
+
+
+def current_branch(repo: Path) -> str | None:
+    """Return the checked-out branch name, or None when detached/missing."""
+    try:
+        name = _run(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    except RuntimeError:
+        return None
+    return None if name in ("", "HEAD") else name
 
 
 def current_commit(repo: Path) -> str | None:

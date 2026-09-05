@@ -55,3 +55,38 @@ until code justifies the split (Ponytail rule).
 - Deterministic sorted output: same repo, same JSON.
 - Conservative graph: syntax-derived only, not a complete runtime call graph.
 - Evidence over scores: `resolution` + `{file,line,expression}`, no invented confidence.
+
+## 5. Architecture policy (scopemap.toml)
+
+```toml
+[layers]
+domain = "src/domain"
+web = "src/web"
+
+[[rules]]
+name = "domain-cannot-import-web"
+from = "domain"
+deny = ["web"]
+```
+
+`from`/`deny` accept layer names or raw paths. Files map to layers by
+longest-prefix match. Every resolved IMPORTS edge is checked; violations
+become high-severity findings with source/target/line evidence.
+
+## 6. Concurrency behavior
+
+Concurrent local `index` runs use atomic replacement (tmp file + rename):
+readers never see a partial graph, and the last successful writer wins.
+ScopeMap provides no distributed locking; single-user local operation is
+the supported mode. A lock would be a separate future task with its own
+regression coverage.
+
+## 7. Branch comparison semantics
+
+`compare --base A --head B` means: changes introduced by B since
+`merge-base(A, B)`, with impact evaluated in B's context. Diffs use
+three-dot form; A-side-only changes never appear. Both revisions are
+materialized with `git archive` into temp dirs, so the working tree is
+never checked out or modified. Snapshots are keyed by commit SHA under
+`.scopemap/indexes/` and coexist. Moved/renamed symbols pair only on
+unique (kind, body-hash) groups; ambiguity stays delete + add.

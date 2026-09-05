@@ -50,6 +50,7 @@ class Node:
     file: str
     line_start: int = 0
     line_end: int = 0
+    content_hash: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -70,6 +71,8 @@ class Node:
         line_end = data.get("line_end", 0)
         assert isinstance(line_start, int), "Node.line_start must be int"
         assert isinstance(line_end, int), "Node.line_end must be int"
+        content_hash = data.get("content_hash", "")
+        assert isinstance(content_hash, str), "Node.content_hash must be str"
         return Node(
             id=node_id,
             kind=kind,  # type: ignore[typeddict-item]
@@ -78,6 +81,7 @@ class Node:
             file=file_value,
             line_start=line_start,
             line_end=line_end,
+            content_hash=content_hash,
         )
 
 
@@ -138,6 +142,7 @@ class Finding:
     title: str
     description: str
     evidence: tuple[Evidence, ...] = ()
+    affected: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -146,6 +151,7 @@ class Finding:
             "title": self.title,
             "description": self.description,
             "evidence": [item.to_dict() for item in self.evidence],
+            "affected": list(self.affected),
         }
 
     @staticmethod
@@ -164,10 +170,17 @@ class Finding:
         for entry in raw_evidence:
             assert isinstance(entry, dict), "Finding.evidence entries must be dicts"
             items.append(Evidence.from_dict(entry))
+        raw_affected = data.get("affected", [])
+        assert isinstance(raw_affected, list), "Finding.affected must be list"
+        affected: list[str] = []
+        for entry in raw_affected:
+            assert isinstance(entry, str), "Finding.affected entries must be strs"
+            affected.append(entry)
         return Finding(
             analyzer=analyzer,
             severity=severity,  # type: ignore[typeddict-item]
             title=title,
             description=description,
             evidence=tuple(items),
+            affected=tuple(affected),
         )

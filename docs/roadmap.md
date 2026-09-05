@@ -20,7 +20,7 @@ DoD: fixture blast-radius matches expected chains.
 
 ## Phase 3 — Architecture Guard
 
-`scopemap.yaml` layers/rules, IMPORTS-edge policy match.
+`scopemap.toml` layers/rules, IMPORTS-edge policy match (see architecture.md).
 DoD: violation Finding with source/target/line evidence.
 No new indexer needed.
 

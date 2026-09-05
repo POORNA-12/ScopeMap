@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import hashlib
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -475,6 +476,16 @@ def _resolve_call(
     return None
 
 
+def _content_hash(source_lines: list[str], start: int, end: int) -> str:
+    """Hash normalized def-body lines (excluding the def/class line itself).
+
+    Moves and renames keep the same body hash; the signature line is
+    intentionally excluded so a renamed symbol still matches.
+    """
+    body = "\n".join(line.strip() for line in source_lines[start : max(end, start)])
+    return hashlib.sha256(body.encode("utf-8")).hexdigest() if body.strip() else ""
+
+
 def _module_of(target: Path, index: dict[str, Path]) -> str:
     for name, path in index.items():
         if path == target:
@@ -499,9 +510,11 @@ def parse_file(path: Path, root: Path, index: dict[str, Path] | None = None) -> 
         line_end=0,
     )
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=relative)
     except (SyntaxError, UnicodeDecodeError, OSError):
         return [file_node], []
+    source_lines = source.splitlines()
 
     module = _module_name(path, root)
     symbols = _FileSymbols(module=module, relative=relative, node=file_node)
@@ -522,6 +535,7 @@ def parse_file(path: Path, root: Path, index: dict[str, Path] | None = None) -> 
                 file=relative,
                 line_start=node.lineno,
                 line_end=node.end_lineno or node.lineno,
+                content_hash=_content_hash(source_lines, node.lineno, node.end_lineno or node.lineno),
             )
         )
         edges.append(
@@ -543,6 +557,7 @@ def parse_file(path: Path, root: Path, index: dict[str, Path] | None = None) -> 
                 file=relative,
                 line_start=node.lineno,
                 line_end=node.end_lineno or node.lineno,
+                content_hash=_content_hash(source_lines, node.lineno, node.end_lineno or node.lineno),
             )
         )
         edges.append(
@@ -567,6 +582,9 @@ def parse_file(path: Path, root: Path, index: dict[str, Path] | None = None) -> 
                 file=relative,
                 line_start=method_node.lineno,
                 line_end=method_node.end_lineno or method_node.lineno,
+                content_hash=_content_hash(
+                    source_lines, method_node.lineno, method_node.end_lineno or method_node.lineno
+                ),
             )
         )
         edges.append(

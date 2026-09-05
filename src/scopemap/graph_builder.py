@@ -6,12 +6,14 @@ import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
-from scopemap.git_diff import current_commit
+from scopemap import __version__ as TOOL_VERSION
+from scopemap.git_diff import current_branch, current_commit
 from scopemap.models import Edge, Node
 from scopemap.python_parser import build_module_index, parse_file
 from scopemap.scanner import discover_python_files
 
 SCHEMA_VERSION = 1
+PARSER_VERSION = 1
 MAX_FILES = 10000
 MAX_BYTES = 200 * 1024 * 1024
 MAX_NODES = 100000
@@ -154,7 +156,10 @@ def build_graph(root: Path, previous: Graph | None = None) -> Graph:
         warnings.append(f"edge count {len(graph.edges)} exceeds recommended {MAX_EDGES}")
     graph.meta = {
         "schema_version": SCHEMA_VERSION,
+        "tool_version": TOOL_VERSION,
+        "parser_version": PARSER_VERSION,
         "repository_root": str(root),
+        "branch": current_branch(root),
         "indexed_at": datetime.now(UTC).isoformat(),
         "git_commit": current_commit(root),
         "warnings": warnings,

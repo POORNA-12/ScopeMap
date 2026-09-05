@@ -103,7 +103,10 @@ Optional explanations (never required, never evidence):
 python -m scopemap analyze --repo . --diff HEAD~1 --explain ollama [--model llama3.1]
 ```
 
-Backends: `ollama` (OLLAMA_HOST or localhost:11434), `openai`
-(OPENAI_API_KEY, OpenAI-compatible `/chat/completions`). Prompts carry
+Backends: `ollama` (model: `--model` > `SCOPEMAP_OLLAMA_MODEL`;
+URL: `SCOPEMAP_OLLAMA_URL` > legacy `OLLAMA_HOST` > `http://localhost:11434`;
+timeout: `SCOPEMAP_OLLAMA_TIMEOUT`, default 10s), `openai` (OPENAI_API_KEY,
+OpenAI-compatible `/chat/completions`). `--explain` defaults to
+`SCOPEMAP_EXPLAIN_PROVIDER`, else none. Prompts carry
 finding metadata only, never file contents. Unreachable backends print
-a note and the deterministic report still succeeds.
+a note and the deterministic report still succeeds. See `docs/explanations.md`.

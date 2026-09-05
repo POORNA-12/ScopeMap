@@ -245,8 +245,13 @@ def analyze_records(
             if coverage_sentence is not None:
                 description_lines.append(coverage_sentence)
             evidence: list[Evidence] = []
+            seen: set[tuple[str, int, str]] = set()
             for path, _ in affected.values():
-                evidence.extend(path)
+                for item in path:
+                    key = (item.file, item.line, item.expression)
+                    if key not in seen:
+                        seen.add(key)
+                        evidence.append(item)
             findings.append(
                 Finding(
                     analyzer="impact",
@@ -254,6 +259,7 @@ def analyze_records(
                     title=f"{scope_name} may affect {len(affected)} component(s)",
                     description="\n".join(description_lines),
                     evidence=tuple(evidence),
+                    affected=tuple(sorted(affected)),
                 )
             )
     return sorted(findings, key=lambda finding: finding.title)

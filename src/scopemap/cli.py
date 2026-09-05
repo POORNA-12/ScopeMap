@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -25,6 +26,7 @@ from scopemap.models import Finding
 
 STORE_DIR = ".scopemap"
 STORE_FILE = "graph.json"
+MAX_EVIDENCE_LINES = 15
 _RESOLVED = frozenset({"direct", "import-resolved", "same-module", "constructor-resolved"})
 _UNRESOLVED = frozenset({"unresolved", "dynamic"})
 
@@ -64,10 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument(
         "--explain",
         choices=["none", "ollama", "openai"],
-        default="none",
-        help="Explain findings via an optional model backend (never required).",
+        default=None,
+        help="Explain findings (default follows SCOPEMAP_EXPLAIN_PROVIDER, else none).",
     )
-    analyze_parser.add_argument("--model", default=None, help="Model name for --explain.")
+    analyze_parser.add_argument("--model", default=None, help="Model name (else SCOPEMAP_OLLAMA_MODEL).")
 
     arch_parser = sub.add_parser("architecture", help="Architecture boundary checks.")
     arch_sub = arch_parser.add_subparsers(dest="arch_command", required=True)
@@ -84,6 +86,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Block commits when the selected findings exist.",
     )
     hook_parser.add_argument("--force", action="store_true", help="Overwrite an existing hook.")
+
+    compare_parser = sub.add_parser("compare", help="Compare two branches or commits.")
+    compare_parser.add_argument("--repo", type=Path, required=True, help="Repository root.")
+    compare_parser.add_argument("--base", required=True, help="Base branch, tag, or SHA.")
+    compare_parser.add_argument("--head", default="HEAD", help="Head branch, tag, or SHA.")
+    compare_parser.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Report format.")
+    compare_parser.add_argument("--depth", type=int, default=10, help="Max traversal depth.")
+    compare_parser.add_argument("--tests-only", action="store_true", help="Show only test files.")
+    compare_parser.add_argument("--direct-only", action="store_true", help="Show only distance-1 dependents.")
+    compare_parser.add_argument("--output", type=Path, default=None, help="Write the report to a file.")
     return parser
 
 
@@ -211,6 +223,14 @@ def _command_analyze(
             lines.append(f"Note: {len(untracked)} untracked file(s) not analyzed (not staged).")
     if not findings:
         lines.append("No potentially affected components found.")
+    else:
+        counts = {"high": 0, "medium": 0, "low": 0}
+        for finding in findings:
+            counts[finding.severity] += 1
+        lines.append(
+            f"ScopeMap impact: {len(findings)} finding(s) "
+            f"(high:{counts['high']} medium:{counts['medium']} low:{counts['low']})"
+        )
     explanations: dict[str, str] = {}
     if findings and explain != "none":
         explanations = _explain_all(findings, explain, model, lines)
@@ -218,10 +238,13 @@ def _command_analyze(
         lines.append(f"Changed: {finding.title}")
         lines.append(finding.description)
         lines.append("Evidence:")
-        for item in finding.evidence:
+        for item in finding.evidence[:MAX_EVIDENCE_LINES]:
             location = f"{item.file}:{item.line}" if item.line else item.file
             detail = f" {item.expression}" if item.expression else ""
             lines.append(f"  {location}{detail}")
+        hidden = len(finding.evidence) - MAX_EVIDENCE_LINES
+        if hidden > 0:
+            lines.append(f"  ... and {hidden} more evidence lines (full set in graph JSON).")
         if finding.title in explanations:
             lines.append(f"Explanation: {explanations[finding.title]}")
     for line in lines:
@@ -240,16 +263,29 @@ def _command_analyze(
     return 0
 
 
-def _explain_all(findings: list[Finding], backend: str, model: str | None, lines: list[str]) -> dict[str, str]:
+def _resolve_backend(explain: str | None, lines: list[str]) -> str:
+    """CLI flag wins, then SCOPEMAP_EXPLAIN_PROVIDER, then deterministic none."""
+    if explain:
+        return explain
+    env = os.environ.get("SCOPEMAP_EXPLAIN_PROVIDER", "").strip().lower()
+    if env in ("ollama", "openai"):
+        return env
+    if env:
+        lines.append(f"Note: ignoring unknown SCOPEMAP_EXPLAIN_PROVIDER={env!r}.")
+    return "none"
+
+
+def _explain_all(findings: list[Finding], backend: str | None, model: str | None, lines: list[str]) -> dict[str, str]:
     """Explain findings via the requested backend; degrade gracefully."""
-    if backend == "ollama":
-        provider = OllamaExplanationProvider(model=model or "llama3.1")
-    elif backend == "openai":
+    resolved = _resolve_backend(backend, lines)
+    if resolved == "ollama":
+        provider = OllamaExplanationProvider(model=model or "")
+    elif resolved == "openai":
         provider = OpenAICompatibleExplanationProvider(model=model or "gpt-4o-mini")
     else:
         provider = NoopExplanationProvider()
     if not provider.available():
-        lines.append(f"Note: explanation backend '{backend}' unavailable; showing deterministic findings only.")
+        lines.append(f"Note: explanation backend '{resolved}' unavailable; showing deterministic findings only.")
         return {}
     paired = explain_findings(findings, provider)
     return {finding.title: text for finding, text in paired if text}
@@ -316,6 +352,38 @@ def _command_install_hook(repo: Path, fail_on: str, force: bool) -> int:
     return 0
 
 
+def _command_compare(
+    repo: Path,
+    base: str,
+    head: str,
+    format_name: str,
+    output: Path | None,
+    depth: int,
+    tests_only: bool,
+    direct_only: bool,
+) -> int:
+    from scopemap.compare import compare_branches, render_dict, render_markdown
+
+    try:
+        comparison = compare_branches(repo, base, head, depth, tests_only, direct_only)
+    except ValueError as error:
+        print(str(error))
+        return 1
+    if format_name == "json":
+        text = json.dumps(render_dict(comparison), indent=2, sort_keys=True)
+    else:
+        text = render_markdown(comparison)
+    print(text, end="" if text.endswith("\n") else "\n")
+    if output is not None:
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+        except OSError as error:
+            print(f"Cannot write report to {output}: {error}")
+            return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = build_parser()
@@ -330,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
         return _command_architecture_check(args.repo, args.policy)
     if args.command == "install-hook":
         return _command_install_hook(args.repo, args.fail_on, args.force)
+    if args.command == "compare":
+        return _command_compare(
+            args.repo, args.base, args.head, args.format, args.output, args.depth, args.tests_only, args.direct_only
+        )
     return _command_analyze(
         args.repo,
         args.diff,

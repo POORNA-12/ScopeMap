@@ -97,3 +97,29 @@ def test_fail_on_architecture(tmp_path: Path) -> None:
     )
     assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--fail-on", "architecture"]) == 1
     assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--fail-on", "none"]) == 0
+
+
+def test_summary_dedupe_and_cap(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from test_impact import _init_repo
+
+    files = {"core.py": "def target():\n    return 1\n"}
+    for i in range(20):
+        files[f"mod{i}/user.py"] = f"from core import target\n\n\ndef use{i}():\n    return target()\n"
+    repo = _init_repo(tmp_path / "repo", files)
+    target = repo / "core.py"
+    target.write_text("def target():\n    return 2\n", encoding="utf-8")
+    import subprocess
+
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD"]) == 0
+    out = capsys.readouterr().out
+    assert "ScopeMap impact: 1 finding(s)" in out
+    assert "more evidence lines (full set in graph JSON)." in out
+    shown = [line for line in out.splitlines() if line.startswith("  ") and not line.startswith("  -")]
+    assert len(shown) <= 16
+    from scopemap.graph_builder import build_graph
+    from scopemap.impact import analyze
+
+    for finding in analyze(repo, "HEAD", build_graph(repo)):
+        keys = [(item.file, item.line, item.expression) for item in finding.evidence]
+        assert len(keys) == len(set(keys)), "evidence must be deduplicated"
