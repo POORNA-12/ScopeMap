@@ -66,3 +66,34 @@ def test_stats_warns_on_stale_graph(capsys: pytest.CaptureFixture[str], tmp_path
     subprocess.run(["git", "commit", "-qm", "touch"], cwd=repo, check=True, env=env)
     assert main(["stats", str(repo)]) == 0
     assert "Graph is stale." in capsys.readouterr().out
+
+
+def test_analyze_output_file(tmp_path: Path) -> None:
+    from test_impact import CORE_V1, CORE_V2, SHOP, _init_repo, _modify
+
+    repo = _init_repo(tmp_path / "repo", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    _modify(repo, "pay/core.py", CORE_V2)
+    output = tmp_path / "nested" / "report.md"
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--output", str(output)]) == 0
+    text = output.read_text(encoding="utf-8")
+    assert "Changed:" in text
+    assert "shop.app.checkout" in text
+
+
+def test_fail_on_architecture(tmp_path: Path) -> None:
+    from test_impact import _init_repo
+
+    policy = (
+        '[layers]\ndomain = "src/domain"\nweb = "src/web"\n'
+        '[[rules]]\nname = "no-web"\nfrom = "domain"\ndeny = ["web"]\n'
+    )
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            "src/domain/order.py": "from src.web.routes import render\n\n\ndef place():\n    return render()\n",
+            "src/web/routes.py": "def render():\n    return 'ok'\n",
+            "scopemap.toml": policy,
+        },
+    )
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--fail-on", "architecture"]) == 1
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--fail-on", "none"]) == 0

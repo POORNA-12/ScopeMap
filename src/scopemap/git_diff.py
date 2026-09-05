@@ -44,12 +44,8 @@ def _strip_prefix(path: str) -> str:
     return text
 
 
-def changed_lines(repo: Path, diff: str) -> dict[str, list[int]]:
-    """Map changed files to added line numbers (new side), sorted and deduped.
-
-    Deleted files appear with an empty list so callers still see them.
-    """
-    output = _run(repo, "diff", "-U0", diff)
+def _parse_hunks(output: str) -> dict[str, list[int]]:
+    """Map hunk targets to added line numbers (new side), sorted and deduped."""
     result: dict[str, list[int]] = {}
     current: str | None = None
     old_path: str | None = None
@@ -79,12 +75,23 @@ def changed_lines(repo: Path, diff: str) -> dict[str, list[int]]:
     return {file: sorted(set(lines)) for file, lines in result.items()}
 
 
-def changed_files_detailed(repo: Path, diff: str) -> list[ChangedFile]:
-    """Normalize name-status plus line numbers into ChangedFile records."""
-    lines = changed_lines(repo, diff)
-    status_output = _run(repo, "diff", "--name-status", "-M", diff)
+def changed_lines(repo: Path, diff: str) -> dict[str, list[int]]:
+    """Map changed files to added line numbers (new side), sorted and deduped.
+
+    Deleted files appear with an empty list so callers still see them.
+    """
+    return _parse_hunks(_run(repo, "diff", "-U0", diff))
+
+
+def staged_lines(repo: Path) -> dict[str, list[int]]:
+    """Same as changed_lines but for staged (cached) changes."""
+    return _parse_hunks(_run(repo, "diff", "-U0", "--cached"))
+
+
+def _parse_statuses(output: str) -> dict[str, ChangedFile]:
+    """Normalize name-status output into ChangedFile records without lines."""
     records: dict[str, ChangedFile] = {}
-    for raw in status_output.splitlines():
+    for raw in output.splitlines():
         parts = raw.split("\t")
         if not parts or not parts[0]:
             continue
@@ -99,6 +106,11 @@ def changed_files_detailed(repo: Path, diff: str) -> list[ChangedFile]:
             code_map = {"A": "added", "D": "deleted", "M": "modified", "T": "modified"}
             path = parts[1]
             records[path] = ChangedFile(old_path=path, new_path=path, status=code_map.get(code, "modified"))
+    return records
+
+
+def _merge_lines(records: dict[str, ChangedFile], lines: dict[str, list[int]]) -> list[ChangedFile]:
+    """Attach hunk line numbers to status records, sorted by new path."""
     for path, numbers in lines.items():
         record = records.get(path)
         if record is None:
@@ -111,6 +123,24 @@ def changed_files_detailed(repo: Path, diff: str) -> list[ChangedFile]:
                 changed_lines=tuple(numbers),
             )
     return [records[key] for key in sorted(records)]
+
+
+def changed_files_detailed(repo: Path, diff: str) -> list[ChangedFile]:
+    """Normalize name-status plus line numbers into ChangedFile records."""
+    records = _parse_statuses(_run(repo, "diff", "--name-status", "-M", diff))
+    return _merge_lines(records, changed_lines(repo, diff))
+
+
+def staged_files_detailed(repo: Path) -> list[ChangedFile]:
+    """Normalize staged (cached) changes into ChangedFile records."""
+    records = _parse_statuses(_run(repo, "diff", "--name-status", "-M", "--cached"))
+    return _merge_lines(records, staged_lines(repo))
+
+
+def untracked_files(repo: Path) -> list[str]:
+    """List untracked files ScopeMap cannot see in diffs, sorted."""
+    output = _run(repo, "ls-files", "--others", "--exclude-standard")
+    return sorted(line for line in (part.strip() for part in output.splitlines()) if line)
 
 
 def toplevel(repo: Path) -> Path:

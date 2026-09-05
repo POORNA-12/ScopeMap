@@ -1,0 +1,59 @@
+name: ScopeMap
+description: Deterministic Python change-impact analysis for pull requests.
+author: ScopeMap Contributors
+inputs:
+  github-token:
+    description: Token used to post the PR comment.
+    default: ${{ github.token }}
+  diff-range:
+    description: Git diff range to analyze (e.g. origin/main...HEAD).
+    default: HEAD~1
+  fail-on:
+    description: Exit 1 when these findings exist (none, impact, architecture).
+    default: none
+  working-directory:
+    description: Repository subdirectory to analyze.
+    default: .
+  python-version:
+    description: Python version for the runner.
+    default: "3.12"
+outputs:
+  findings-file:
+    description: Path to the written ScopeMap report.
+    value: ${{ steps.analyze.outputs.report }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install ScopeMap
+      shell: bash
+      run: pip install "${{ github.action_path }}"
+    - name: Analyze diff
+      id: analyze
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        scopemap analyze --repo . --diff "${{ inputs.diff-range }}" \
+          --fail-on "${{ inputs.fail-on }}" --output scopemap-report.md | tee scopemap-report.md
+        echo "report=${{ inputs.working-directory }}/scopemap-report.md" >> "$GITHUB_OUTPUT"
+    - name: Comment findings on PR
+      if: github.event_name == 'pull_request'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        {
+          echo "## ScopeMap impact report"
+          echo
+          echo '```'
+          cat scopemap-report.md
+          echo '```'
+        } > scopemap-comment.md
+        gh pr comment "${{ github.event.pull_request.number }}" --body-file scopemap-comment.md
+branding:
+  icon: git-pull-request
+  color: blue

@@ -10,7 +10,8 @@ from __future__ import annotations
 from collections import deque
 from pathlib import Path
 
-from scopemap.git_diff import changed_files_detailed
+from scopemap.coverage import CoverageReport, executing_tests, split_lines
+from scopemap.git_diff import ChangedFile, changed_files_detailed, staged_files_detailed
 from scopemap.graph_builder import Graph
 from scopemap.models import Evidence, Finding, Severity
 
@@ -162,6 +163,24 @@ def _deleted_finding(graph: Graph, old_path: str) -> Finding:
     )
 
 
+def _coverage_line(
+    report: CoverageReport | None, changed_file: str, seed: str, graph: Graph, lines: list[int]
+) -> str | None:
+    """Suite-level coverage sentence for one finding's changed lines."""
+    if report is None:
+        return None
+    seed_lines = [line for line in lines if _enclosing_symbol(graph, changed_file, line) == seed]
+    scope_lines = seed_lines or lines
+    covered, uncovered = split_lines(report, changed_file, scope_lines)
+    sentence = f"Coverage (suite): {len(covered)}/{len(scope_lines)} changed lines executed"
+    if uncovered:
+        sentence += f" (uncovered: {', '.join(str(line) for line in uncovered)})"
+    tests = executing_tests(report, changed_file, covered)
+    if tests:
+        sentence += f" (executed by: {', '.join(tests)})"
+    return sentence
+
+
 def analyze(
     repo: Path,
     diff: str,
@@ -169,9 +188,25 @@ def analyze(
     max_depth: int = MAX_DEPTH,
     tests_only: bool = False,
     direct_only: bool = False,
+    coverage: CoverageReport | None = None,
+    staged: bool = False,
 ) -> list[Finding]:
     """Build one Finding per changed symbol (or file) with evidence chains."""
-    records = changed_files_detailed(repo, diff)
+    records = staged_files_detailed(repo) if staged else changed_files_detailed(repo, diff)
+    return analyze_records(
+        records, graph, max_depth=max_depth, tests_only=tests_only, direct_only=direct_only, coverage=coverage
+    )
+
+
+def analyze_records(
+    records: list[ChangedFile],
+    graph: Graph,
+    max_depth: int = MAX_DEPTH,
+    tests_only: bool = False,
+    direct_only: bool = False,
+    coverage: CoverageReport | None = None,
+) -> list[Finding]:
+    """Same as analyze but over precomputed ChangedFile records."""
     findings: list[Finding] = []
     for record in records:
         if record.status == "deleted":
@@ -204,6 +239,11 @@ def analyze(
             for title, names in groups.items():
                 description_lines.append(f"{title} ({len(names)}):")
                 description_lines.extend(f"  - {name}" for name in names)
+            coverage_sentence = _coverage_line(
+                report=coverage, changed_file=changed_file, seed=seed, graph=graph, lines=lines
+            )
+            if coverage_sentence is not None:
+                description_lines.append(coverage_sentence)
             evidence: list[Evidence] = []
             for path, _ in affected.values():
                 evidence.extend(path)

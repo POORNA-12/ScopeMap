@@ -70,3 +70,40 @@ Evidence:
 ```
 
 Exit 0 always (advisory). `--strict` for CI later.
+
+Filters: `--depth N`, `--tests-only`, `--direct-only`.
+
+Optional coverage (`coverage.py` JSON, never required):
+
+```bash
+python -m scopemap analyze --repo . --diff HEAD~1 --coverage coverage.json
+```
+
+Appends a suite-level sentence per finding
+(`Coverage (suite): 2/3 changed lines executed (uncovered: 14)`);
+per-test names appear only when the report carries line contexts.
+Missing/invalid reports exit 1 with a message instead of guessing.
+
+Staged analysis (pre-commit flow):
+
+```bash
+python -m scopemap analyze --staged --repo .
+python -m scopemap install-hook --repo . [--fail-on impact|architecture] [--force]
+```
+
+`--staged` reads the git index instead of a diff range and notes
+untracked files it cannot see. `--fail-on` exits 1 on findings
+(advisory `none` by default; `architecture` needs `scopemap.toml`).
+`install-hook` writes an executable `.git/hooks/pre-commit`;
+refuses to overwrite without `--force`.
+
+Optional explanations (never required, never evidence):
+
+```bash
+python -m scopemap analyze --repo . --diff HEAD~1 --explain ollama [--model llama3.1]
+```
+
+Backends: `ollama` (OLLAMA_HOST or localhost:11434), `openai`
+(OPENAI_API_KEY, OpenAI-compatible `/chat/completions`). Prompts carry
+finding metadata only, never file contents. Unreachable backends print
+a note and the deterministic report still succeeds.
