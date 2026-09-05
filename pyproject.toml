@@ -1,0 +1,32 @@
+[project]
+name = "scopemap"
+version = "0.1.0"
+description = "Understand the scope of a change before you merge it."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+
+[project.scripts]
+scopemap = "scopemap.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyrefly]
+project_excludes = ["__pyrefly_virtual__", ".venv", "venv", "__pycache__", ".git", "build", "dist"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+norecursedirs = [".git", ".venv", "build", "dist", "node_modules", "fixtures"]
