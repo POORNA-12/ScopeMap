@@ -7,6 +7,7 @@ import os
 import tempfile
 from pathlib import Path
 
+from scopemap.git_diff import current_commit
 from scopemap.graph_builder import Graph
 from scopemap.serializers import graph_from_dict, graph_to_dict
 
@@ -31,3 +32,14 @@ def save_graph(graph: Graph, output: Path) -> None:
 def load_graph(output: Path) -> Graph:
     """Reload graph from JSON."""
     return graph_from_dict(json.loads(output.read_text(encoding="utf-8")))
+
+
+def freshness(graph: Graph, repo: Path) -> str:
+    """Return fresh, stale, or unknown by comparing indexed vs HEAD commit."""
+    stored = graph.meta.get("git_commit")
+    if not isinstance(stored, str) or not stored:
+        return "unknown"
+    current = current_commit(repo)
+    if current is None:
+        return "unknown"
+    return "fresh" if current == stored else "stale"

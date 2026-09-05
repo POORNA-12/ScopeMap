@@ -39,6 +39,11 @@ def _module_index(root: Path) -> dict[str, Path]:
     return index
 
 
+def build_module_index(root: Path) -> dict[str, Path]:
+    """Build the repository-wide module index once and share it."""
+    return _module_index(root)
+
+
 def _file_id(relative: str) -> str:
     return f"file:{relative}"
 
@@ -68,6 +73,8 @@ class _CallSite:
     expression: str
     scope: str
     owner: str | None
+    ctor_class: str | None = None
+    registry_value: str | None = None
 
 
 @dataclass
@@ -81,6 +88,42 @@ class _FileSymbols:
     classes: dict[str, ast.ClassDef] = field(default_factory=dict)
     methods: dict[str, str] = field(default_factory=dict)  # Class.method -> owner class
     method_nodes: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = field(default_factory=dict)
+    bindings: dict[str, str] = field(default_factory=dict)  # variable -> class name (same-scope or module)
+    registries: dict[str, dict[str, str]] = field(default_factory=dict)  # dict name -> {key: func name}
+
+
+def _collect_bindings(tree: ast.AST, symbols: _FileSymbols) -> None:
+    """Pre-pass: simple `x = Class()` bindings and {key: func} registries.
+
+    Whole-tree scan so use-before-definition order never matters.
+    Only single Name targets count; anything fancier stays unresolved.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        elif isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        else:
+            continue
+        names = [target.id for target in targets if isinstance(target, ast.Name)]
+        if not names or value is None:
+            continue
+        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+            for name in names:
+                symbols.bindings[name] = value.func.id
+        elif (
+            isinstance(value, ast.Dict)
+            and all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in value.keys)
+            and all(isinstance(item, ast.Name) for item in value.values)
+        ):
+            mapping: dict[str, str] = {}
+            for key, item in zip(value.keys, value.values, strict=True):
+                assert isinstance(key, ast.Constant) and isinstance(item, ast.Name)
+                mapping[str(key.value)] = item.id
+            for name in names:
+                symbols.registries[name] = mapping
 
 
 class _Collector(ast.NodeVisitor):
@@ -130,6 +173,22 @@ class _Collector(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         dotted = _dotted(node.func)
+        ctor_class: str | None = None
+        registry_value: str | None = None
+        if not dotted and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Call):
+            receiver = node.func.value.func
+            if isinstance(receiver, ast.Name):
+                ctor_class = receiver.id
+                dotted = f"{ctor_class}.{node.func.attr}"
+        if not dotted and isinstance(node.func, ast.Subscript):
+            target = _dotted(node.func.value)
+            key = node.func.slice
+            if target and self.symbols is not None and target in self.symbols.registries:
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    registry_value = self.symbols.registries[target].get(str(key.value))
+                    dotted = f"{target}.{key.value}"
+            if not dotted and target:
+                dotted = f"{target}[{_text(key) or '?'}]"
         if dotted:
             self.calls.append(
                 _CallSite(
@@ -138,6 +197,8 @@ class _Collector(ast.NodeVisitor):
                     expression=_text(node),
                     scope=self._scope,
                     owner=self._owner,
+                    ctor_class=ctor_class,
+                    registry_value=registry_value,
                 )
             )
         self.generic_visit(node)
@@ -326,6 +387,31 @@ def _is_dynamic(call: _CallSite) -> bool:
     return call.dotted.startswith(("getattr(", "get(")) or "[" in call.dotted
 
 
+def _resolve_class_method(
+    class_name: str, method: str, symbols: _FileSymbols, aliases: dict[str, _Import]
+) -> tuple[str, Resolution] | None:
+    """Resolve Class.method to a method edge, else a class-level edge."""
+    if class_name in symbols.classes:
+        qualified = f"{class_name}.{method}"
+        if qualified in symbols.methods:
+            return _symbol_id(symbols.module, qualified), "constructor-resolved"
+        return _symbol_id(symbols.module, class_name), "constructor-resolved"
+    imp = aliases.get(class_name)
+    if imp is not None and imp.target is not None and imp.symbol is not None:
+        return _symbol_id(imp.module, imp.symbol), "constructor-resolved"
+    return None
+
+
+def _resolve_bare(name: str, symbols: _FileSymbols, aliases: dict[str, _Import]) -> tuple[str, Resolution] | None:
+    """Resolve a bare function/class name as if called directly."""
+    if name in symbols.functions or name in symbols.classes:
+        return _symbol_id(symbols.module, name), "direct"
+    imp = aliases.get(name)
+    if imp is not None and imp.target is not None and imp.symbol is not None:
+        return _symbol_id(imp.module, imp.symbol), "direct"
+    return None
+
+
 def _scope_id(symbols: _FileSymbols, call: _CallSite) -> str:
     if call.owner is not None and call.scope != call.owner:
         return _symbol_id(symbols.module, f"{call.owner}.{call.scope}")
@@ -345,6 +431,8 @@ def _resolve_call(
     parts = call.dotted.split(".")
     head, rest = parts[0], parts[1:]
 
+    if call.ctor_class is not None and rest:
+        return _resolve_class_method(call.ctor_class, rest[-1], symbols, aliases)
     if head == "self" and call.owner is not None and rest:
         candidate = f"{call.owner}.{rest[0]}"
         if candidate in symbols.methods:
@@ -362,15 +450,28 @@ def _resolve_call(
 
     imp = aliases.get(head)
     if imp is not None and imp.target is not None and imp.symbol is None:
-        module = imp.module
-        symbol = rest[0]
-        return _symbol_id(module, symbol), "direct"
+        parts = imp.module.split(".")
+        rel = list(rest)
+        overlap = 0
+        for width in range(min(len(parts), len(rel)), 0, -1):
+            if rel[:width] == parts[-width:]:
+                overlap = width
+                break
+        full = parts + rel[overlap:]
+        if len(full) < 2:
+            return None
+        return _symbol_id(".".join(full[:-1]), full[-1]), "direct"
     if imp is not None and imp.target is not None and imp.symbol is not None and len(rest) == 1:
         return _symbol_id(imp.module, imp.symbol), "direct"
     if head in index:
-        return _symbol_id(head, rest[0]), "direct"
+        return _symbol_id(head, rest[-1]), "direct"
     if symbols.module and f"{symbols.module}.{head}" in module_files:
         return _symbol_id(symbols.module, head), "same-module"
+    bound = symbols.bindings.get(head)
+    if bound is not None and rest:
+        return _resolve_class_method(bound, rest[-1], symbols, aliases)
+    if call.registry_value is not None:
+        return _resolve_bare(call.registry_value, symbols, aliases)
     return None
 
 
@@ -381,10 +482,11 @@ def _module_of(target: Path, index: dict[str, Path]) -> str:
     return ""
 
 
-def parse_file(path: Path, root: Path) -> tuple[list[Node], list[Edge]]:
+def parse_file(path: Path, root: Path, index: dict[str, Path] | None = None) -> tuple[list[Node], list[Edge]]:
     """Extract nodes and edges from one Python file.
 
     Syntax errors yield the file node only, never a crash.
+    Pass a shared index from build_module_index to avoid re-scanning.
     """
     relative = path.relative_to(root).as_posix()
     file_node = Node(
@@ -403,6 +505,7 @@ def parse_file(path: Path, root: Path) -> tuple[list[Node], list[Edge]]:
 
     module = _module_name(path, root)
     symbols = _FileSymbols(module=module, relative=relative, node=file_node)
+    _collect_bindings(tree, symbols)
     collector = _Collector(module)
     collector.symbols = symbols
     collector.visit(tree)
@@ -476,7 +579,7 @@ def parse_file(path: Path, root: Path) -> tuple[list[Node], list[Edge]]:
             )
         )
 
-    index = _module_index(root)
+    index = _module_index(root) if index is None else index
     module_files = {name: path.relative_to(root).as_posix() for name, path in index.items()}
     import_edges, aliases = _resolve_imports(collector, file_node, index, root, relative)
     edges.extend(import_edges)

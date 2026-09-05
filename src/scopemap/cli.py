@@ -6,14 +6,14 @@ import argparse
 from pathlib import Path
 
 from scopemap.graph_builder import Graph, build_graph
-from scopemap.graph_store import load_graph, save_graph
+from scopemap.graph_store import freshness, load_graph, save_graph
 from scopemap.guard import check as guard_check
 from scopemap.guard import load_policy
 from scopemap.impact import analyze as analyze_impact
 
 STORE_DIR = ".scopemap"
 STORE_FILE = "graph.json"
-_RESOLVED = frozenset({"direct", "import-resolved", "same-module"})
+_RESOLVED = frozenset({"direct", "import-resolved", "same-module", "constructor-resolved"})
 _UNRESOLVED = frozenset({"unresolved", "dynamic"})
 
 
@@ -37,6 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser = sub.add_parser("analyze", help="Analyze a diff (Phase 2).")
     analyze_parser.add_argument("--repo", type=Path, required=True, help="Repository root.")
     analyze_parser.add_argument("--diff", required=True, help="Diff range, e.g. HEAD~1.")
+    analyze_parser.add_argument("--depth", type=int, default=10, help="Max traversal depth.")
+    analyze_parser.add_argument("--tests-only", action="store_true", help="Show only test files.")
+    analyze_parser.add_argument("--direct-only", action="store_true", help="Show only distance-1 dependents.")
 
     arch_parser = sub.add_parser("architecture", help="Architecture boundary checks.")
     arch_sub = arch_parser.add_subparsers(dest="arch_command", required=True)
@@ -76,10 +79,29 @@ def print_summary(repo: Path, graph: Graph, files: int) -> None:
     print(f"Calls unresolved: {summary['calls_unresolved']}")
 
 
+def _load_previous(repo: Path) -> Graph | None:
+    store = store_path(repo)
+    if not store.is_file():
+        return None
+    try:
+        return load_graph(store)
+    except (OSError, ValueError, AssertionError, KeyError, TypeError):
+        return None
+
+
 def _command_index(repo: Path) -> int:
-    graph = build_graph(repo)
+    previous = _load_previous(repo)
+    graph = build_graph(repo, previous)
     save_graph(graph, store_path(repo))
     print_summary(repo, graph, _python_file_count(graph))
+    reused = graph.meta.get("reused_files", 0)
+    parsed = graph.meta.get("parsed_files", 0)
+    if isinstance(reused, int) and isinstance(parsed, int) and (reused or parsed):
+        print(f"Index: reused {reused} file(s), parsed {parsed} file(s)")
+    warnings = graph.meta.get("warnings", [])
+    if isinstance(warnings, list):
+        for warning in warnings:
+            print(f"Warning: {warning}")
     return 0
 
 
@@ -100,14 +122,19 @@ def _command_stats(repo: Path) -> int:
         print(f"No index found at {store}; run 'scopemap index' first.")
         return 1
     graph = load_graph(store)
+    if freshness(graph, repo) == "stale":
+        indexed = graph.meta.get("git_commit", "?")
+        print("Graph is stale.")
+        print(f"Indexed commit: {indexed}")
+        print("Run `scopemap index` before trusting analysis.")
     print_summary(repo, graph, _python_file_count(graph))
     return 0
 
 
-def _command_analyze(repo: Path, diff: str) -> int:
+def _command_analyze(repo: Path, diff: str, depth: int, tests_only: bool, direct_only: bool) -> int:
     graph = build_graph(repo)
     try:
-        findings = analyze_impact(repo, diff, graph)
+        findings = analyze_impact(repo, diff, graph, depth, tests_only, direct_only)
     except RuntimeError as error:
         print(str(error))
         return 1
@@ -157,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
         return _command_stats(args.repo)
     if args.command == "architecture":
         return _command_architecture_check(args.repo, args.policy)
-    return _command_analyze(args.repo, args.diff)
+    return _command_analyze(args.repo, args.diff, args.depth, args.tests_only, args.direct_only)
 
 
 if __name__ == "__main__":

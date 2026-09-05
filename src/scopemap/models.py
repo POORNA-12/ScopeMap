@@ -11,7 +11,9 @@ from typing import Literal
 
 NodeKind = Literal["file", "function", "class", "method"]
 EdgeKind = Literal["CONTAINS", "DEFINES", "IMPORTS", "INHERITS", "CALLS"]
-Resolution = Literal["direct", "import-resolved", "same-module", "unresolved", "dynamic", "external"]
+Resolution = Literal[
+    "direct", "import-resolved", "same-module", "constructor-resolved", "unresolved", "dynamic", "external"
+]
 Severity = Literal["high", "medium", "low"]
 
 
@@ -111,6 +113,7 @@ class Edge:
             "direct",
             "import-resolved",
             "same-module",
+            "constructor-resolved",
             "unresolved",
             "dynamic",
             "external",

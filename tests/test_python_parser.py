@@ -71,3 +71,76 @@ def test_node_ids_stable() -> None:
     second, _ = parse_file(FIXTURE / "payments" / "processor.py", FIXTURE)
     assert [node.id for node in first] == [node.id for node in second]
     assert all(isinstance(node, Node) for node in first)
+
+
+def _parse_source(tmp_path: Path, files: dict[str, str], target: str) -> tuple[list[Node], list[Edge]]:
+    for relative, content in files.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    return parse_file(tmp_path / target, tmp_path)
+
+
+def test_constructor_call_same_file(tmp_path: Path) -> None:
+    source = "class Worker:\n    def run(self):\n        return 1\n\n\ndef start():\n    return Worker().run()\n"
+    _, edges = _parse_source(tmp_path, {"svc.py": source}, "svc.py")
+    calls = [edge for edge in edges if edge.kind == "CALLS" and edge.target.endswith(":Worker.run")]
+    assert len(calls) == 1
+    assert calls[0].resolution == "constructor-resolved"
+
+
+def test_constructor_call_imported_class_is_class_level(tmp_path: Path) -> None:
+    _, edges = _parse_source(
+        tmp_path,
+        {
+            "lib.py": "class Engine:\n    def run(self):\n        return 1\n",
+            "app.py": "from lib import Engine\n\n\ndef start():\n    return Engine().run()\n",
+        },
+        "app.py",
+    )
+    calls = [edge for edge in edges if edge.kind == "CALLS"]
+    targets = {edge.target for edge in calls}
+    assert "python:lib:Engine" in targets
+    assert any(edge.target == "python:lib:Engine" and edge.resolution == "constructor-resolved" for edge in calls)
+
+
+def test_variable_bound_call(tmp_path: Path) -> None:
+    _, edges = _parse_source(
+        tmp_path,
+        {
+            "svc.py": (
+                "class Worker:\n    def run(self):\n        return 1\n"
+                "\n\ndef start():\n    worker = Worker()\n    return worker.run()\n"
+            )
+        },
+        "svc.py",
+    )
+    calls = [edge for edge in edges if edge.kind == "CALLS" and edge.target.endswith(":Worker.run")]
+    assert len(calls) == 1
+    assert calls[0].resolution == "constructor-resolved"
+
+
+def test_variable_bound_unknown_stays_unresolved(tmp_path: Path) -> None:
+    _, edges = _parse_source(
+        tmp_path,
+        {"svc.py": "def start(get_handler):\n    handler = get_handler()\n    return handler(1)\n"},
+        "svc.py",
+    )
+    calls = [edge for edge in edges if edge.kind == "CALLS"]
+    assert any(edge.target == "unknown:handler" and edge.resolution == "unresolved" for edge in calls)
+
+
+def test_registry_dict_call_resolves(tmp_path: Path) -> None:
+    source = "def login():\n    return 1\n\nHANDLERS = {'go': login}\n\n\ndef dispatch():\n"
+    source += "    return HANDLERS['go']()\n"
+    _, edges = _parse_source(tmp_path, {"svc.py": source}, "svc.py")
+    calls = [edge for edge in edges if edge.kind == "CALLS"]
+    assert any(edge.target.endswith(":login") and edge.resolution == "direct" for edge in calls)
+
+
+def test_registry_unknown_key_stays_unresolved(tmp_path: Path) -> None:
+    source = "def login():\n    return 1\n\nHANDLERS = {'go': login}\n\n\ndef dispatch(key):\n"
+    source += "    return HANDLERS[key]()\n"
+    _, edges = _parse_source(tmp_path, {"svc.py": source}, "svc.py")
+    calls = [edge for edge in edges if edge.kind == "CALLS"]
+    assert any(edge.target.startswith("unknown:") for edge in calls)

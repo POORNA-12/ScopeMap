@@ -56,3 +56,33 @@ def test_sorted_and_file_root(tmp_path: Path) -> None:
     assert discover_python_files(tmp_path) == [second, first]
     assert discover_python_files(second) == [second]
     assert discover_python_files(tmp_path / "missing") == []
+
+
+def test_symlink_inside_repo_kept(tmp_path: Path) -> None:
+    real = tmp_path / "real.py"
+    real.write_text("x = 1\n")
+    link = tmp_path / "link.py"
+    link.symlink_to(real)
+    assert discover_python_files(tmp_path) == [link, real]
+
+
+def test_symlink_escape_rejected_and_recorded(tmp_path: Path) -> None:
+    outside = tmp_path / "outside" / "secret.py"
+    outside.parent.mkdir(parents=True)
+    outside.write_text("x = 1\n")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    evil = repo / "link.py"
+    evil.symlink_to(outside)
+    skipped: list[tuple[str, str]] = []
+    found = discover_python_files(repo, on_skip=lambda path, reason: skipped.append((path.name, reason)))
+    assert found == []
+    assert skipped == [("link.py", "symlink-escape")]
+
+
+def test_broken_symlink_skipped(tmp_path: Path) -> None:
+    link = tmp_path / "ghost.py"
+    link.symlink_to(tmp_path / "missing.py")
+    skipped: list[str] = []
+    assert discover_python_files(tmp_path, on_skip=lambda path, reason: skipped.append(reason)) == []
+    assert skipped == ["not-a-file"]

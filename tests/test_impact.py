@@ -109,3 +109,22 @@ def test_cli_analyze_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     assert "Changed:" in out
     assert "Potentially affected" in out
     assert "Evidence:" in out
+
+
+def test_deleted_file_reports_importers(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    (repo / "pay" / "core.py").unlink()
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "remove core")
+    findings = analyze(repo, "HEAD~1", build_graph(repo))
+    assert len(findings) == 1
+    assert "removed file pay/core.py" in findings[0].title
+    assert "shop/app.py" in findings[0].description
+
+
+def test_rename_completes_without_crash(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    _git(repo, "mv", "pay/core.py", "pay/engine.py")
+    _git(repo, "commit", "-qm", "rename")
+    findings = analyze(repo, "HEAD~1", build_graph(repo))
+    assert isinstance(findings, list)
