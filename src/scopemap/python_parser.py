@@ -80,6 +80,7 @@ class _FileSymbols:
     functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = field(default_factory=dict)
     classes: dict[str, ast.ClassDef] = field(default_factory=dict)
     methods: dict[str, str] = field(default_factory=dict)  # Class.method -> owner class
+    method_nodes: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = field(default_factory=dict)
 
 
 class _Collector(ast.NodeVisitor):
@@ -112,6 +113,7 @@ class _Collector(ast.NodeVisitor):
         assert self.symbols is not None
         if self._owner is not None:
             self.symbols.methods[f"{self._owner}.{node.name}"] = self._owner
+            self.symbols.method_nodes[f"{self._owner}.{node.name}"] = node
         else:
             self.symbols.functions[node.name] = node
         previous_scope, self._scope = self._scope, node.name
@@ -452,6 +454,7 @@ def parse_file(path: Path, root: Path) -> tuple[list[Node], list[Edge]]:
     for dotted, owner in collector.symbols.methods.items():
         method = dotted.split(".")[-1]
         key = f"{module}.{dotted}" if module else dotted
+        method_node = collector.symbols.method_nodes[dotted]
         nodes.append(
             Node(
                 id=_symbol_id(module, dotted),
@@ -459,8 +462,8 @@ def parse_file(path: Path, root: Path) -> tuple[list[Node], list[Edge]]:
                 name=method,
                 qualified_name=key,
                 file=relative,
-                line_start=0,
-                line_end=0,
+                line_start=method_node.lineno,
+                line_end=method_node.end_lineno or method_node.lineno,
             )
         )
         edges.append(
