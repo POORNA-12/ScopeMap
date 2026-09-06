@@ -127,12 +127,36 @@ def summarize(graph: Graph) -> dict[str, int]:
     }
 
 
+_LANGUAGE_LABELS: dict[str, str] = {"python": "Python", "ts": "TypeScript", "js": "JavaScript"}
+
+
+def _language_file_counts(graph: Graph) -> list[tuple[str, int]]:
+    """Per-language indexed file counts from parser metadata (sorted)."""
+    parsers = graph.meta.get("parsers", {})
+    if not isinstance(parsers, dict):
+        return []
+    counts: list[tuple[str, int]] = []
+    for lang in sorted(parsers):
+        entry = parsers[lang]
+        if not isinstance(entry, dict):
+            continue
+        indexed = entry.get("files_indexed", 0)
+        if isinstance(indexed, int) and indexed:
+            counts.append((str(lang), indexed))
+    return counts
+
+
 def print_summary(repo: Path, graph: Graph, files: int) -> None:
     """Print deterministic human-readable graph statistics."""
     summary = summarize(graph)
     print(f"Repository: {repo}")
     print(f"Files scanned: {files}")
-    print(f"Python files: {files}")
+    counts = _language_file_counts(graph)
+    if counts:
+        for lang, total in counts:
+            print(f"{_LANGUAGE_LABELS.get(lang, lang)} files: {total}")
+    else:
+        print(f"Python files: {files}")
     print(f"Nodes: {summary['nodes']}")
     print(f"Edges: {summary['edges']}")
     print(f"Imports: {summary['imports']}")

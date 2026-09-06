@@ -67,3 +67,29 @@ def test_semantic_graph_stable_across_builds() -> None:
     second_edges = sorted((e.source, e.target, e.kind, e.resolution) for e in second.edges)
     assert first_edges == second_edges
     assert all(node_id.startswith(("file:", "python:")) for node_id in first.nodes)
+
+
+def test_matching_versions_reuse_cache() -> None:
+    first = build_graph(FIXTURE)
+    second = build_graph(FIXTURE, first)
+    assert second.meta["reused_files"] == first.meta["parsed_files"]
+    assert second.meta["parsed_files"] == 0
+
+
+def test_stale_parser_versions_reparse() -> None:
+    """F12: a parser bump must invalidate cached entries."""
+    first = build_graph(FIXTURE)
+    first.meta["parser_versions"] = {"python": 999, "ts": 1, "js": 1}
+    second = build_graph(FIXTURE, first)
+    assert second.meta["reused_files"] == 0
+    assert second.meta["parsed_files"] == first.meta["parsed_files"]
+
+
+def test_legacy_graph_without_versions_reparses() -> None:
+    """F12: v0.9 graphs (no version metadata) are never blindly reused."""
+    first = build_graph(FIXTURE)
+    for key in ("schema_version", "parser_registry_version", "parser_versions"):
+        first.meta.pop(key, None)
+    second = build_graph(FIXTURE, first)
+    assert second.meta["reused_files"] == 0
+    assert second.meta["parsed_files"] == first.meta["parsed_files"]

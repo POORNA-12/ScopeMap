@@ -131,6 +131,8 @@ Rules:
 - `--interactive` needs a TTY plus the `viz` extra; otherwise it prints a note
   and the static tree. `--interactive --format json` exits 2 (conflict).
   `--output` with `--interactive` captures the static tree to the file.
+  Explorer keys: `1-9` expands a group, `Enter`/`n` advances to the next
+  finding, `q` quits. There is no toggle-all action.
 
 Optional extras (core stays stdlib-only; TS/JS parsers lazy-load):
 

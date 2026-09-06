@@ -61,6 +61,18 @@ def test_cross_language_never_guessed(tmp_path: Path) -> None:
                 assert edge.target.split(":")[0] == source_lang or edge.source.startswith("file:")
 
 
+def test_mixed_index_per_language_counts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from scopemap.cli import main
+
+    repo = _mixed_repo(tmp_path)
+    assert main(["index", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "Files scanned: 11" in out
+    assert "Python files: 5" in out
+    assert "TypeScript files: 3" in out
+    assert "JavaScript files: 3" in out
+
+
 def _git(repo: Path, *args: str) -> None:
     import subprocess
 

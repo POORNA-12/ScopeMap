@@ -64,6 +64,25 @@ class Graph:
             callers.sort()
 
 
+def _reuse_compatible(previous: Graph, root: Path) -> bool:
+    """True when cached entries may be reused without re-parsing.
+
+    Same repository root AND identical schema, registry, and per-language
+    parser versions. A parser bump invalidates the cache so stale parser
+    output is never reused.
+    """
+    if previous.meta.get("repository_root") != str(root):
+        return False
+    if previous.meta.get("schema_version") != SCHEMA_VERSION:
+        return False
+    if previous.meta.get("parser_registry_version") != PARSER_REGISTRY_VERSION:
+        return False
+    stored_versions = previous.meta.get("parser_versions", {})
+    if not isinstance(stored_versions, dict) or dict(stored_versions) != dict(PARSER_VERSIONS):
+        return False
+    return True
+
+
 def _fingerprint(path: Path) -> tuple[str, int, int] | None:
     """Return (sha256, size, mtime) for a file, or None when unreadable."""
     try:
@@ -106,7 +125,7 @@ def build_graph(root: Path, previous: Graph | None = None) -> Graph:
         if parser.lang not in indexes:
             indexes[parser.lang] = parser.build_index(root)
     reuse_map: dict[str, tuple[str, int, int]] = {}
-    if previous is not None and previous.meta.get("repository_root") == str(root):
+    if previous is not None and _reuse_compatible(previous, root):
         stored = previous.meta.get("files", {})
         if isinstance(stored, dict):
             for key, value in stored.items():

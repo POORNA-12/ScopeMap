@@ -119,29 +119,36 @@ def _emit(
     distance: dict[str, int],
     lines: list[str],
     counter: list[int],
+    rendered: set[str],
     max_depth: int,
     max_nodes: int,
 ) -> None:
-    """Recursive tree line writer with cycle guard and node budget."""
+    """Recursive tree line writer with cycle guard and node budget.
+
+    Every displayed node is recorded in ``rendered``. Omission accounting
+    lives solely with the caller (affected minus rendered); this function
+    never touches the omitted counter so suppressed nodes count once.
+    """
     if counter[0] >= max_nodes:
-        counter[1] += 1
         return
     branch = "`-- " if last else "|-- "
     if node_id in path:
         lines.append(f"{indent}{branch}{_display(graph, node_id)} (cycle)")
         counter[0] += 1
+        rendered.add(node_id)
         return
     if depth > max_depth:
         lines.append(f"{indent}{branch}{_display(graph, node_id)} (max depth {max_depth})")
         counter[0] += 1
+        rendered.add(node_id)
         return
     dist = distance.get(node_id, depth)
     lines.append(f"{indent}{branch}{_display(graph, node_id)} [{_group(dist, node_id, graph)}]")
     counter[0] += 1
+    rendered.add(node_id)
     kids = children.get(node_id, [])
     for index, child in enumerate(kids):
         if counter[0] >= max_nodes:
-            counter[1] += 1
             continue
         _emit(
             child,
@@ -154,6 +161,7 @@ def _emit(
             distance,
             lines,
             counter,
+            rendered,
             max_depth,
             max_nodes,
         )
@@ -214,6 +222,7 @@ def _render_finding(
         roots = affected
     if seed is not None:
         top = children.get(seed, roots) or roots
+        rendered: set[str] = set()
         for index, node_id in enumerate(top):
             _emit(
                 node_id,
@@ -226,12 +235,12 @@ def _render_finding(
                 distance,
                 lines,
                 counter,
+                rendered,
                 max_depth,
                 max_nodes,
             )
-        rendered = set(top)
         for node_id in affected:
-            if node_id not in rendered and node_id not in distance and counter[0] < max_nodes:
+            if node_id not in rendered and counter[0] < max_nodes:
                 _emit(
                     node_id,
                     "",
@@ -243,17 +252,19 @@ def _render_finding(
                     distance,
                     lines,
                     counter,
+                    rendered,
                     max_depth,
                     max_nodes,
                 )
-                rendered.add(node_id)
-            elif node_id not in rendered:
-                counter[1] += 1
+        # Single accounting site: suppressed = affected minus displayed.
+        counter[1] += len(affected_set - rendered)
     else:
+        rendered_flat: set[str] = set()
         for node_id in affected:
             if counter[0] >= max_nodes:
-                counter[1] += 1
                 continue
             dist = distance.get(node_id, 1)
             lines.append(f"|-- {_display(graph, node_id)} [{_group(dist, node_id, graph)}]")
             counter[0] += 1
+            rendered_flat.add(node_id)
+        counter[1] += len(affected_set - rendered_flat)

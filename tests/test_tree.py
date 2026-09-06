@@ -122,6 +122,107 @@ def test_tree_constants() -> None:
     assert DEFAULT_TREE_MAX_NODES == 500
 
 
+def _caller_chain(graph: Graph, count: int, prefix: str = "chain") -> list[str]:
+    """Changed leaf f0 <- f1 <- f2 ... (caller direction, like real CALLS)."""
+    from scopemap.models import Edge, Evidence, Node
+
+    graph.add_node(
+        Node(id=f"file:{prefix}.py", kind="file", name=f"{prefix}.py", qualified_name=prefix, file=f"{prefix}.py")
+    )
+    ids = [f"python:{prefix}.f{i}" for i in range(count)]
+    for i, node_id in enumerate(ids):
+        graph.add_node(
+            Node(id=node_id, kind="function", name=f"f{i}", qualified_name=f"{prefix}.f{i}", file=f"{prefix}.py")
+        )
+        if i > 0:
+            graph.add_edge(
+                Edge(
+                    source=node_id,
+                    target=ids[i - 1],
+                    kind="CALLS",
+                    resolution="direct",
+                    evidence=Evidence(file=f"{prefix}.py", line=i),
+                )
+            )
+    return ids
+
+
+def test_nested_children_no_bogus_omission() -> None:
+    """F8: fully displayed nested trees must not claim omissions."""
+    from scopemap.graph_builder import Graph as BuilderGraph
+
+    graph = BuilderGraph()
+    ids = _caller_chain(graph, 4)
+    graph.finalize()
+    finding = _finding(f"chain.f0 may affect {len(ids) - 1} component(s)", ids[1:])
+    text = render_ascii_tree([finding], graph)
+    assert "omitted" not in text
+    for node_id in ids[1:]:
+        assert node_id.split(":")[-1] in text
+
+
+def test_over_limit_omission_count_exact() -> None:
+    """F8: the marker number must equal genuinely suppressed nodes."""
+    from scopemap.graph_builder import Graph as BuilderGraph
+
+    graph = BuilderGraph()
+    ids = _caller_chain(graph, 12)
+    graph.finalize()
+    affected = ids[1:]
+    finding = _finding(f"chain.f0 may affect {len(affected)} component(s)", affected)
+    text = render_ascii_tree([finding], graph, max_depth=20, max_nodes=5)
+    shown = sum(1 for line in text.splitlines() if "-- " in line and "omitted" not in line and "Changed:" not in line)
+    assert shown == 5
+    assert f"`-- ... {len(affected) - 5} additional affected node(s) omitted (max_nodes=5)" in text
+
+
+def test_under_limit_cycle_no_omission() -> None:
+    """F8: cycles under budget terminate with a (cycle) marker, no omission."""
+    from scopemap.graph_builder import Graph as BuilderGraph
+    from scopemap.models import Edge, Evidence, Node
+
+    graph = BuilderGraph()
+    graph.add_node(Node(id="file:c.py", kind="file", name="c.py", qualified_name="c", file="c.py"))
+    graph.add_node(Node(id="python:c.a", kind="function", name="a", qualified_name="c.a", file="c.py"))
+    graph.add_node(Node(id="python:c.b", kind="function", name="b", qualified_name="c.b", file="c.py"))
+    graph.add_edge(
+        Edge(
+            source="python:c.a",
+            target="python:c.b",
+            kind="CALLS",
+            resolution="direct",
+            evidence=Evidence(file="c.py", line=1),
+        )
+    )
+    graph.add_edge(
+        Edge(
+            source="python:c.b",
+            target="python:c.a",
+            kind="CALLS",
+            resolution="direct",
+            evidence=Evidence(file="c.py", line=2),
+        )
+    )
+    graph.finalize()
+    finding = _finding("c.a may affect 1 component(s)", ["python:c.b"])
+    text = render_ascii_tree([finding], graph)
+    assert "omitted" not in text
+
+
+def test_deep_chain_depth_truncation() -> None:
+    """F8: chains deeper than max_depth stop with an explicit marker."""
+    from scopemap.graph_builder import Graph as BuilderGraph
+
+    graph = BuilderGraph()
+    ids = _caller_chain(graph, 12)
+    graph.finalize()
+    affected = ids[1:]
+    finding = _finding(f"chain.f0 may affect {len(affected)} component(s)", affected)
+    text = render_ascii_tree([finding], graph, max_depth=3, max_nodes=500)
+    assert "(max depth 3)" in text
+    assert "omitted" not in text
+
+
 def test_no_ansi_codes_in_output() -> None:
     graph = Graph()
     graph.add_node(_node("python:q:x"))
