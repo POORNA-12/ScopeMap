@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -54,29 +55,32 @@ def _discover(root: Path, suffixes: frozenset[str], on_skip: SkipHandler | None 
     if not root.is_dir():
         return []
     found: list[Path] = []
-    for candidate in sorted(root.rglob("*")):
-        if candidate.suffix not in suffixes:
-            continue
-        if not candidate.is_file():
-            if on_skip is not None:
-                on_skip(candidate, "not-a-file")
-            continue
-        if _is_ignored(candidate, root):
-            continue
-        if not _is_contained(candidate, root):
-            if on_skip is not None:
-                on_skip(candidate, "symlink-escape")
-            continue
-        try:
-            if candidate.stat().st_size > MAX_FILE_BYTES:
-                if on_skip is not None:
-                    on_skip(candidate, "oversized")
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for filename in filenames:
+            candidate = Path(dirpath) / filename
+            if candidate.suffix not in suffixes:
                 continue
-        except OSError:
-            if on_skip is not None:
-                on_skip(candidate, "unreadable")
-            continue
-        found.append(candidate)
+            if not candidate.is_file():
+                if on_skip is not None:
+                    on_skip(candidate, "not-a-file")
+                continue
+            if _is_ignored(candidate, root):
+                continue
+            if not _is_contained(candidate, root):
+                if on_skip is not None:
+                    on_skip(candidate, "symlink-escape")
+                continue
+            try:
+                if candidate.stat().st_size > MAX_FILE_BYTES:
+                    if on_skip is not None:
+                        on_skip(candidate, "oversized")
+                    continue
+            except OSError:
+                if on_skip is not None:
+                    on_skip(candidate, "unreadable")
+                continue
+            found.append(candidate)
     return sorted(found)
 
 
