@@ -26,8 +26,11 @@ def test_python_parser_registered_by_default() -> None:
 def test_unknown_extensions_ignored() -> None:
     ensure_default_parsers()
     assert get_parser_for_path(Path("notes.txt")) is None
-    assert get_parser_for_path(Path("app.ts")) is None
     assert get_parser_for_path(Path("main.go")) is None
+    assert get_parser_for_path(Path("lib.rs")) is None
+    # P4.1: TS/JS are registered optional languages.
+    assert get_parser_for_path(Path("app.ts")) is not None
+    assert get_parser_for_path(Path("app.js")) is not None
 
 
 def test_available_languages_contains_python() -> None:

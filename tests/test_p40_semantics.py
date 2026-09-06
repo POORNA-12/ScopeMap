@@ -18,10 +18,11 @@ def test_unknown_extensions_never_crash(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
     (tmp_path / "b.ts").write_text("const x = 1;\n", encoding="utf-8")
     (tmp_path / "c.txt").write_text("hi\n", encoding="utf-8")
+    (tmp_path / "d.go").write_text("package x\n", encoding="utf-8")
     found = discover_files(tmp_path)
-    assert found == [tmp_path / "a.py"]
+    assert found == [tmp_path / "a.py", tmp_path / "b.ts"]
     graph = build_graph(tmp_path)
-    assert graph.meta["languages"] == ["python"]
+    assert graph.meta["languages"] == ["python", "ts"]
 
 
 def test_legacy_meta_keys_preserved() -> None:
@@ -48,7 +49,7 @@ def test_new_metadata_shape() -> None:
     graph = build_graph(FIXTURE)
     assert graph.meta["languages"] == ["python"]
     assert graph.meta["parser_registry_version"] == 1
-    assert graph.meta["parser_versions"] == {"python": 1}
+    assert graph.meta["parser_versions"] == {"python": 1, "ts": 1, "js": 1}
     python_meta = graph.meta["parsers"]["python"]
     assert python_meta["registered"] is True
     assert python_meta["available"] is True

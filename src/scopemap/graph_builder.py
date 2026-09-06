@@ -8,14 +8,20 @@ from pathlib import Path
 
 from scopemap import __version__ as TOOL_VERSION
 from scopemap.git_diff import current_branch, current_commit
+from scopemap.js_parser import JAVASCRIPT_PARSER_VERSION
 from scopemap.models import Edge, Node
 from scopemap.python_parser import PYTHON_PARSER_VERSION
 from scopemap.scanner import discover_files
+from scopemap.ts_parser import TYPESCRIPT_PARSER_VERSION
 
 SCHEMA_VERSION = 1
 PARSER_VERSION = 1  # Back-compat alias for the Python parser version.
 PARSER_REGISTRY_VERSION = 1
-PARSER_VERSIONS: dict[str, int] = {"python": PYTHON_PARSER_VERSION}
+PARSER_VERSIONS: dict[str, int] = {
+    "python": PYTHON_PARSER_VERSION,
+    "ts": TYPESCRIPT_PARSER_VERSION,
+    "js": JAVASCRIPT_PARSER_VERSION,
+}
 MAX_FILES = 10000
 MAX_BYTES = 200 * 1024 * 1024
 MAX_NODES = 100000

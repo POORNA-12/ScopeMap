@@ -60,9 +60,18 @@ def parser_statuses() -> dict[str, dict[str, Any]]:
 
 
 def ensure_default_parsers() -> None:
-    """Register the stdlib Python parser (lazy import breaks cycles)."""
+    """Register stdlib + optional parsers (lazy import breaks cycles).
+
+    All parser classes are always registered. Availability is checked
+    lazily at scan time; unavailable parsers stay visible in metadata
+    and produce structured warnings instead of silent skips.
+    """
     if _REGISTRY:
         return
+    from scopemap.js_parser import JavaScriptParser
     from scopemap.python_parser import PythonParser
+    from scopemap.ts_parser import TypeScriptParser
 
     register_parser(PythonParser())
+    register_parser(TypeScriptParser())
+    register_parser(JavaScriptParser())
