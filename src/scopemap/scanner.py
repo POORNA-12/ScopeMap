@@ -32,15 +32,10 @@ def _is_contained(candidate: Path, root: Path) -> bool:
     return resolved == resolved_root or resolved_root in resolved.parents
 
 
-def discover_python_files(root: Path, on_skip: SkipHandler | None = None) -> list[Path]:
-    """Return sorted repo-relative Python files under root.
-
-    Skips skipped directories, non-.py files, oversized files, broken
-    links, and any symlink escaping the repository root. Every skip is
-    reported through on_skip when provided; file contents are never read.
-    """
+def _discover(root: Path, suffixes: frozenset[str], on_skip: SkipHandler | None = None) -> list[Path]:
+    """Shared discovery for one suffix set (sorted, capped, contained)."""
     if root.is_file():
-        if root.suffix != ".py":
+        if root.suffix not in suffixes:
             return []
         if not _is_contained(root, root.parent):
             if on_skip is not None:
@@ -58,9 +53,10 @@ def discover_python_files(root: Path, on_skip: SkipHandler | None = None) -> lis
         return [root]
     if not root.is_dir():
         return []
-
     found: list[Path] = []
-    for candidate in sorted(root.rglob("*.py")):
+    for candidate in sorted(root.rglob("*")):
+        if candidate.suffix not in suffixes:
+            continue
         if not candidate.is_file():
             if on_skip is not None:
                 on_skip(candidate, "not-a-file")
@@ -82,3 +78,33 @@ def discover_python_files(root: Path, on_skip: SkipHandler | None = None) -> lis
             continue
         found.append(candidate)
     return sorted(found)
+
+
+def discover_files(
+    root: Path,
+    extensions: frozenset[str] | None = None,
+    on_skip: SkipHandler | None = None,
+) -> list[Path]:
+    """Return sorted files matching registered parser extensions.
+
+    ``extensions`` defaults to every registered extension. Unknown
+    extensions are never returned and never crash the scan.
+    """
+    if extensions is None:
+        from scopemap.parser_registry import registered_extensions
+
+        extensions = registered_extensions()
+    if not extensions:
+        return []
+    return _discover(root, extensions, on_skip)
+
+
+def discover_python_files(root: Path, on_skip: SkipHandler | None = None) -> list[Path]:
+    """Return sorted repo-relative Python files under root.
+
+    Backward-compatible wrapper around :func:`discover_files`.
+    Skips skipped directories, non-.py files, oversized files, broken
+    links, and any symlink escaping the repository root. Every skip is
+    reported through on_skip when provided; file contents are never read.
+    """
+    return _discover(root, frozenset({".py"}), on_skip)

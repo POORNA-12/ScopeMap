@@ -64,6 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze_parser.add_argument("--output", type=Path, default=None, help="Write the report to a file.")
     analyze_parser.add_argument(
+        "--format",
+        choices=["text", "json", "tree"],
+        default="text",
+        help="Report format (default: text).",
+    )
+    analyze_parser.add_argument(
         "--explain",
         choices=["none", "ollama", "openai"],
         default=None,
@@ -181,6 +187,14 @@ def _command_stats(repo: Path) -> int:
     return 0
 
 
+def _graph_warnings(graph: Graph) -> list[str]:
+    """Structured warning strings from graph metadata (never raises)."""
+    raw = graph.meta.get("warnings", [])
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw]
+
+
 def _command_analyze(
     repo: Path,
     diff: str,
@@ -193,17 +207,26 @@ def _command_analyze(
     output: Path | None,
     explain: str,
     model: str | None,
+    format_name: str = "text",
 ) -> int:
     graph = build_graph(repo)
+    warnings = _graph_warnings(graph)
     report: CoverageReport | None = None
     if coverage_path is not None:
         if not coverage_path.is_file():
-            print(f"No coverage report at {coverage_path}; run `coverage json`.")
+            message = f"No coverage report at {coverage_path}; run `coverage json`."
+            if format_name == "json":
+                print(json.dumps({"error": message, "warnings": warnings}, indent=2, sort_keys=True))
+            else:
+                print(message)
             return 1
         try:
             report = load_coverage_json(coverage_path)
         except ValueError as error:
-            print(str(error))
+            if format_name == "json":
+                print(json.dumps({"error": str(error), "warnings": warnings}, indent=2, sort_keys=True))
+            else:
+                print(str(error))
             return 1
     try:
         if staged:
@@ -211,9 +234,16 @@ def _command_analyze(
         else:
             findings = analyze_impact(repo, diff, graph, depth, tests_only, direct_only, report)
     except RuntimeError as error:
-        print(str(error))
+        if format_name == "json":
+            print(json.dumps({"error": str(error), "warnings": warnings}, indent=2, sort_keys=True))
+        else:
+            print(str(error))
         return 1
+    if format_name == "json":
+        return _command_analyze_json(repo, graph, findings, warnings, output, fail_on)
     lines: list[str] = []
+    for warning in warnings:
+        lines.append(f"Warning: {warning}")
     if staged:
         try:
             untracked = untracked_files(repo)
@@ -234,6 +264,24 @@ def _command_analyze(
     explanations: dict[str, str] = {}
     if findings and explain != "none":
         explanations = _explain_all(findings, explain, model, lines)
+    if format_name == "tree":
+        from scopemap.tree import render_ascii_tree
+
+        lines.append(render_ascii_tree(findings, graph))
+        for line in lines:
+            print(line)
+        if output is not None:
+            try:
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            except OSError as error:
+                print(f"Cannot write report to {output}: {error}")
+                return 1
+        if fail_on == "impact":
+            return 1 if findings else 0
+        if fail_on == "architecture":
+            return _fail_on_architecture(repo, graph)
+        return 0
     for finding in findings:
         lines.append(f"Changed: {finding.title}")
         lines.append(finding.description)
@@ -255,6 +303,45 @@ def _command_analyze(
             output.write_text("\n".join(lines) + "\n", encoding="utf-8")
         except OSError as error:
             print(f"Cannot write report to {output}: {error}")
+            return 1
+    if fail_on == "impact":
+        return 1 if findings else 0
+    if fail_on == "architecture":
+        return _fail_on_architecture(repo, graph)
+    return 0
+
+
+def _command_analyze_json(
+    repo: Path,
+    graph: Graph,
+    findings: list[Finding],
+    warnings: list[str],
+    output: Path | None,
+    fail_on: str,
+) -> int:
+    """JSON report: warnings live inside the payload, stdout stays valid JSON."""
+    counts = {"high": 0, "medium": 0, "low": 0}
+    for finding in findings:
+        counts[finding.severity] += 1
+    payload = {
+        "format": "json",
+        "summary": {
+            "findings": len(findings),
+            "high": counts["high"],
+            "medium": counts["medium"],
+            "low": counts["low"],
+        },
+        "warnings": warnings,
+        "findings": [finding.to_dict() for finding in findings],
+    }
+    text = json.dumps(payload, indent=2, sort_keys=True)
+    print(text)
+    if output is not None:
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(text + "\n", encoding="utf-8")
+        except OSError as error:
+            print(json.dumps({"error": f"Cannot write report to {output}: {error}"}, indent=2))
             return 1
     if fail_on == "impact":
         return 1 if findings else 0
@@ -414,6 +501,7 @@ def main(argv: list[str] | None = None) -> int:
         args.output,
         args.explain,
         args.model,
+        args.format,
     )
 
 

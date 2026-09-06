@@ -9,11 +9,13 @@ from pathlib import Path
 from scopemap import __version__ as TOOL_VERSION
 from scopemap.git_diff import current_branch, current_commit
 from scopemap.models import Edge, Node
-from scopemap.python_parser import build_module_index, parse_file
-from scopemap.scanner import discover_python_files
+from scopemap.python_parser import PYTHON_PARSER_VERSION
+from scopemap.scanner import discover_files
 
 SCHEMA_VERSION = 1
-PARSER_VERSION = 1
+PARSER_VERSION = 1  # Back-compat alias for the Python parser version.
+PARSER_REGISTRY_VERSION = 1
+PARSER_VERSIONS: dict[str, int] = {"python": PYTHON_PARSER_VERSION}
 MAX_FILES = 10000
 MAX_BYTES = 200 * 1024 * 1024
 MAX_NODES = 100000
@@ -74,14 +76,29 @@ def _file_entries(graph: Graph, relative: str) -> tuple[list[Node], list[Edge]]:
 
 
 def build_graph(root: Path, previous: Graph | None = None) -> Graph:
-    """Index every Python file under root into one graph.
+    """Index every registered-language file under root into one graph.
 
     With a previous graph from the same root, unchanged files (by
     size, mtime, then sha256) are reused without re-parsing.
+    Files whose parser is registered but unavailable are skipped with
+    a structured warning; unknown extensions are never returned.
     """
+    from scopemap.parser_registry import (
+        ensure_default_parsers,
+        get_parser_for_path,
+        parser_statuses,
+    )
+
+    ensure_default_parsers()
     graph = Graph()
-    index = build_module_index(root)
-    files = discover_python_files(root)
+    files = discover_files(root)
+    indexes: dict[str, object] = {}
+    for path in files:
+        parser = get_parser_for_path(path)
+        if parser is None or not parser.is_available():
+            continue
+        if parser.lang not in indexes:
+            indexes[parser.lang] = parser.build_index(root)
     reuse_map: dict[str, tuple[str, int, int]] = {}
     if previous is not None and previous.meta.get("repository_root") == str(root):
         stored = previous.meta.get("files", {})
@@ -100,8 +117,16 @@ def build_graph(root: Path, previous: Graph | None = None) -> Graph:
     reused = 0
     parsed = 0
     total_bytes = 0
+    per_lang_indexed: dict[str, int] = {}
+    per_lang_skipped: dict[str, int] = {}
     for path in files:
+        parser = get_parser_for_path(path)
+        if parser is None:
+            continue
         relative = path.relative_to(root).as_posix()
+        if not parser.is_available():
+            per_lang_skipped[parser.lang] = per_lang_skipped.get(parser.lang, 0) + 1
+            continue
         try:
             stat = path.stat()
         except OSError:
@@ -122,6 +147,7 @@ def build_graph(root: Path, previous: Graph | None = None) -> Graph:
                     graph.add_edge(edge)
                 fingerprints[relative] = [stored[0], stored[1], stored[2]]
                 reused += 1
+                per_lang_indexed[parser.lang] = per_lang_indexed.get(parser.lang, 0) + 1
                 continue
         fingerprint = _fingerprint(path)
         if fingerprint is None:
@@ -136,14 +162,16 @@ def build_graph(root: Path, previous: Graph | None = None) -> Graph:
                     graph.add_edge(edge)
                 fingerprints[relative] = [digest, stat.st_size, int(stat.st_mtime)]
                 reused += 1
+                per_lang_indexed[parser.lang] = per_lang_indexed.get(parser.lang, 0) + 1
                 continue
-        nodes, edges = parse_file(path, root, index)
+        nodes, edges = parser.parse_file(path, root, indexes[parser.lang])
         for node in nodes:
             graph.add_node(node)
         for edge in edges:
             graph.add_edge(edge)
         fingerprints[relative] = [digest, stat.st_size, int(stat.st_mtime)]
         parsed += 1
+        per_lang_indexed[parser.lang] = per_lang_indexed.get(parser.lang, 0) + 1
     graph.finalize()
     warnings: list[str] = []
     if len(files) > MAX_FILES:
@@ -154,10 +182,30 @@ def build_graph(root: Path, previous: Graph | None = None) -> Graph:
         warnings.append(f"node count {len(graph.nodes)} exceeds recommended {MAX_NODES}")
     if len(graph.edges) > MAX_EDGES:
         warnings.append(f"edge count {len(graph.edges)} exceeds recommended {MAX_EDGES}")
+    statuses = parser_statuses()
+    parsers_meta: dict[str, object] = {}
+    for lang, status in sorted(statuses.items()):
+        parsers_meta[lang] = {
+            "registered": True,
+            "available": bool(status.get("available", False)),
+            "used": lang in per_lang_indexed,
+            "files_indexed": per_lang_indexed.get(lang, 0),
+            "files_skipped": per_lang_skipped.get(lang, 0),
+            "parser_version": PARSER_VERSIONS.get(lang, 0),
+        }
+    for lang in sorted(per_lang_skipped):
+        count = per_lang_skipped[lang]
+        if count:
+            warnings.append(f"{lang} parser unavailable (optional dependency not installed); skipped {count} file(s)")
+    languages = sorted(per_lang_indexed)
     graph.meta = {
         "schema_version": SCHEMA_VERSION,
         "tool_version": TOOL_VERSION,
         "parser_version": PARSER_VERSION,
+        "parser_registry_version": PARSER_REGISTRY_VERSION,
+        "parser_versions": dict(PARSER_VERSIONS),
+        "languages": languages,
+        "parsers": parsers_meta,
         "repository_root": str(root),
         "branch": current_branch(root),
         "indexed_at": datetime.now(UTC).isoformat(),

@@ -15,7 +15,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from scopemap.models import Edge, Evidence, Node, Resolution
+from scopemap.parser_api import Parser
 from scopemap.scanner import discover_python_files
+
+PYTHON_PARSER_VERSION = 1
 
 _STDLIB: frozenset[str] = frozenset(sys.stdlib_module_names)
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
@@ -641,3 +644,22 @@ def parse_file(path: Path, root: Path, index: dict[str, Path] | None = None) -> 
                 )
             )
     return nodes, edges
+
+
+class PythonParser(Parser):
+    """Stdlib Python adapter implementing the Parser protocol."""
+
+    lang: str = "python"
+    extensions: frozenset[str] = frozenset({".py"})
+
+    def is_available(self) -> bool:
+        return True
+
+    def build_index(self, root: Path) -> dict[str, Path]:
+        return build_module_index(root)
+
+    def parse_file(self, path: Path, root: Path, index: dict[str, Path] | None = None) -> tuple[list[Node], list[Edge]]:
+        return parse_file(path, root, index)
+
+    def __repr__(self) -> str:
+        return "PythonParser()"
