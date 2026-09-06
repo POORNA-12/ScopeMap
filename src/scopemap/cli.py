@@ -70,6 +70,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Report format (default: text).",
     )
     analyze_parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Explore findings in an interactive tree (needs TTY + 'viz' extra; implies tree view).",
+    )
+    analyze_parser.add_argument(
         "--explain",
         choices=["none", "ollama", "openai"],
         default=None,
@@ -208,7 +213,11 @@ def _command_analyze(
     explain: str,
     model: str | None,
     format_name: str = "text",
+    interactive: bool = False,
 ) -> int:
+    if interactive and format_name == "json":
+        print("error: --interactive cannot be combined with --format json (interactive implies tree view).")
+        return 2
     graph = build_graph(repo)
     warnings = _graph_warnings(graph)
     report: CoverageReport | None = None
@@ -241,6 +250,8 @@ def _command_analyze(
         return 1
     if format_name == "json":
         return _command_analyze_json(repo, graph, findings, warnings, output, fail_on)
+    if interactive:
+        return _command_analyze_interactive(repo, graph, findings, warnings, output, fail_on)
     lines: list[str] = []
     for warning in warnings:
         lines.append(f"Warning: {warning}")
@@ -309,6 +320,36 @@ def _command_analyze(
     if fail_on == "architecture":
         return _fail_on_architecture(repo, graph)
     return 0
+
+
+def _command_analyze_interactive(
+    repo: Path,
+    graph: Graph,
+    findings: list[Finding],
+    warnings: list[str],
+    output: Path | None,
+    fail_on: str,
+) -> int:
+    """Interactive explorer with ASCII fallback; --output captures the tree."""
+    from scopemap.tree import render_ascii_tree
+    from scopemap.tree_interactive import show
+
+    for warning in warnings:
+        print(f"Warning: {warning}")
+    if output is not None:
+        text = render_ascii_tree(findings, graph)
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(text + "\n", encoding="utf-8")
+        except OSError as error:
+            print(f"Cannot write report to {output}: {error}")
+            return 1
+    result = show(findings, graph)
+    if fail_on == "impact":
+        return 1 if findings else 0
+    if fail_on == "architecture":
+        return _fail_on_architecture(repo, graph)
+    return result
 
 
 def _command_analyze_json(
@@ -502,6 +543,7 @@ def main(argv: list[str] | None = None) -> int:
         args.explain,
         args.model,
         args.format,
+        args.interactive,
     )
 
 

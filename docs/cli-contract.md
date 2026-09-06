@@ -110,3 +110,37 @@ OpenAI-compatible `/chat/completions`). `--explain` defaults to
 `SCOPEMAP_EXPLAIN_PROVIDER`, else none. Prompts carry
 finding metadata only, never file contents. Unreachable backends print
 a note and the deterministic report still succeeds. See `docs/explanations.md`.
+
+## 5. Report formats and interactive explorer (Phase 4)
+
+```bash
+python -m scopemap analyze --repo . --diff HEAD --format text   # default, unchanged
+python -m scopemap analyze --repo . --diff HEAD --format json   # machine-readable
+python -m scopemap analyze --repo . --diff HEAD --format tree   # static ASCII tree
+python -m scopemap analyze --repo . --diff HEAD --interactive   # Rich explorer (implies tree)
+```
+
+Rules:
+
+- `text` output is byte-identical to pre-Phase-4 output when no warnings exist.
+- `json` stdout is always valid JSON; warnings live inside the payload
+  (`{"summary", "warnings", "findings"}`), never as stray lines.
+- `tree` renders a bounded (`max depth 8`, `max nodes 500`), deterministic,
+  cycle-safe ASCII tree with explicit omission notices. Piped output carries
+  zero ANSI codes.
+- `--interactive` needs a TTY plus the `viz` extra; otherwise it prints a note
+  and the static tree. `--interactive --format json` exits 2 (conflict).
+  `--output` with `--interactive` captures the static tree to the file.
+
+Optional extras (core stays stdlib-only; TS/JS parsers lazy-load):
+
+```bash
+pip install scopemap[ts]   # TypeScript (.ts/.tsx/.mts/.cts, skips .d.ts)
+pip install scopemap[js]   # JavaScript (.js/.jsx/.mjs/.cjs, skips *.min.js)
+pip install scopemap[viz]  # Rich interactive explorer
+pip install scopemap[all]  # everything above
+```
+
+Limitations (v0.10): no TS/JS `extends` mapping, no default-import call
+resolution, no cross-language resolution (preserved as `unresolved`
+evidence, never guessed), Go/Rust not supported.
