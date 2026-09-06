@@ -278,7 +278,8 @@ def _command_analyze(
     if format_name == "tree":
         from scopemap.tree import render_ascii_tree
 
-        lines.append(render_ascii_tree(findings, graph))
+        if findings:
+            lines.append(render_ascii_tree(findings, graph))
         for line in lines:
             print(line)
         if output is not None:

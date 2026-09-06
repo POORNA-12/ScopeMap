@@ -54,3 +54,11 @@ def test_tree_format_to_output_file(tmp_path: Path) -> None:  # type: ignore[no-
     assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--format", "tree", "--output", str(output)]) == 0
     text = output.read_text(encoding="utf-8")
     assert "Changed:" in text
+
+
+def test_tree_format_empty_findings_single_line(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    repo = _init_repo(tmp_path / "repo", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--format", "tree"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("No potentially affected components found.") == 1
+
