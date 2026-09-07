@@ -78,3 +78,18 @@ def test_hook_script_runs_end_to_end(tmp_path: Path) -> None:
     )
     assert completed.returncode == 0
     assert "shop.app.checkout" in completed.stdout
+
+
+def test_install_hook_with_spaces_in_path(tmp_path: Path) -> None:
+    import scopemap
+
+    repo = _init_repo(tmp_path / "repo with spaces", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    assert main(["install-hook", "--repo", str(repo)]) == 0
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    assert hook.is_file()
+    _stage_change(repo)
+    src = str(Path(scopemap.__file__).parent.parent)
+    env = {**os.environ, "PYTHONPATH": src}
+    completed = subprocess.run([str(hook)], cwd=repo, capture_output=True, text=True, env=env)
+    assert completed.returncode == 0
+    assert "shop.app.checkout" in completed.stdout

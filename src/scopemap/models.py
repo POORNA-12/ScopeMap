@@ -11,9 +11,12 @@ from typing import Literal
 
 NodeKind = Literal["file", "function", "class", "method"]
 EdgeKind = Literal["CONTAINS", "DEFINES", "IMPORTS", "INHERITS", "CALLS"]
+# Resolution: direct, import-resolved, same-module, constructor-resolved, dynamic, unresolved.
+# "external" is reserved for package resolution; 3rd-party imports currently emit unknown:<spec> + unresolved.
 Resolution = Literal[
     "direct", "import-resolved", "same-module", "constructor-resolved", "unresolved", "dynamic", "external"
 ]
+
 Severity = Literal["high", "medium", "low"]
 
 

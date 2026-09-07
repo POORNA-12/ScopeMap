@@ -50,7 +50,9 @@ def test_new_metadata_shape() -> None:
     assert graph.meta["languages"] == ["python"]
     assert graph.meta["parser_registry_version"] == 1
     assert graph.meta["parser_versions"] == {"python": 1, "ts": 1, "js": 1}
-    python_meta = graph.meta["parsers"]["python"]
+    parsers = graph.meta["parsers"]
+    assert isinstance(parsers, dict)
+    python_meta = parsers["python"]
     assert python_meta["registered"] is True
     assert python_meta["available"] is True
     assert python_meta["used"] is True

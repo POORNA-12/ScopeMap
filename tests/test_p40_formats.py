@@ -61,4 +61,3 @@ def test_tree_format_empty_findings_single_line(tmp_path: Path, capsys) -> None:
     assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--format", "tree"]) == 0
     out = capsys.readouterr().out
     assert out.count("No potentially affected components found.") == 1
-

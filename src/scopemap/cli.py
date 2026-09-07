@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import sys
 from pathlib import Path
 
@@ -499,8 +500,10 @@ def _command_install_hook(repo: Path, fail_on: str, force: bool) -> int:
     parts = [sys.executable, "-m", "scopemap", "analyze", "--staged", "--repo", str(repo)]
     if fail_on != "none":
         parts += ["--fail-on", fail_on]
-    hook.write_text("#!/bin/sh\n# ScopeMap advisory pre-commit hook.\nexec " + " ".join(parts) + "\n", encoding="utf-8")
+    content = f"#!/bin/sh\n# ScopeMap advisory pre-commit hook.\nexec {shlex.join(parts)}\n"
+    hook.write_text(content, encoding="utf-8")
     os.chmod(hook, 0o755)
+
     print(f"Installed pre-commit hook at {hook} (fail-on: {fail_on}).")
     return 0
 

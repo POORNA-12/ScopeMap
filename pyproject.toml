@@ -1,6 +1,6 @@
 [project]
 name = "scopemap"
-version = "0.1.0"
+version = "0.10.0"
 description = "Understand the scope of a change before you merge it."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -43,7 +43,10 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pyrefly]
-project_excludes = ["__pyrefly_virtual__", ".venv", "venv", "__pycache__", ".git", "build", "dist"]
+project_excludes = ["__pyrefly_virtual__", ".venv", "venv", "__pycache__", ".git", "build", "dist", "fixtures", "**/fixtures/**", "tests/fixtures/**"]
+search_path = ["src", "tests"]
+
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

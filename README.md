@@ -1,39 +1,163 @@
 # ScopeMap
 
-Understand the scope of a change before you merge it.
+> **Understand the full scope and blast-radius of a code change before you merge it.**
 
-Local-first Python change-impact tool using a deterministic
-dependency graph with evidence. Stdlib-only core, offline,
-zero mandatory paid services. MIT.
+ScopeMap is a local-first, deterministic change-impact analysis engine. It extracts syntax-derived dependency graphs with verifiable source code evidence, calculates precise downstream blast-radii across functions, classes, and modules, and enforces architectural boundaries without requiring cloud services or external API keys.
 
-Gate 2 APPROVED. Phase 0 docs in `docs/`.
-Phase 1: `python -m scopemap index ./example` (stdlib:
-ast, pathlib, json, argparse, subprocess).
+---
 
-Phase 4 adds optional TypeScript/JavaScript indexing (Tree-sitter),
-`analyze --format text|json|tree`, and `analyze --interactive`
-(Rich explorer with static-tree fallback). Core stays stdlib-only:
+## ⚡ Key Highlights
+
+* **100% Stdlib-Only Core:** Zero mandatory runtime dependencies. Built strictly on Python's standard library (`ast`, `pathlib`, `json`, `argparse`, `subprocess`, `hashlib`).
+* **Multi-Language Support:** Python AST engine built-in; optional high-performance Tree-sitter parsers for TypeScript (`.ts`, `.tsx`, `.mts`, `.cts`) and JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`).
+* **Deterministic Reverse BFS:** Traces caller and import dependents with visited sets, cycle safety, configurable depth caps, and exact line-level evidence.
+* **Visual & Structured Outputs:** Formats impact reports as human-readable text, structured JSON, ASCII trees (`--format tree`), or an interactive TUI explorer (`--interactive`).
+* **Zero-Worktree-Mutation Branch Diffs:** Compares branches via `git archive` materialized trees without touching your active working directory.
+* **Architecture Boundary Guard:** Enforces layer rules (e.g. `domain` cannot import `adapters`) via `scopemap.toml`.
+* **CI & Pre-Commit Ready:** Includes an advisory/blocking Git pre-commit hook installer and a zero-cloud GitHub Action.
+
+---
+
+## 📦 Installation
+
+ScopeMap is distributed as a standard Python package via `pip`:
 
 ```bash
-pip install scopemap        # Python only, zero runtime dependencies
-pip install scopemap[all]   # + TS/JS parsers + interactive explorer
+# Core installation (Python AST only, zero external runtime dependencies)
+pip install scopemap
+
+# With TypeScript/JavaScript Tree-sitter parsers
+pip install "scopemap[ts]"
+pip install "scopemap[js]"
+
+# With interactive Rich terminal explorer
+pip install "scopemap[viz]"
+
+# Full suite (All parsers + interactive visualization)
+pip install "scopemap[all]"
 ```
 
-See `docs/cli-contract.md` (section 5) for formats, extras, and
-limitations.
+*Requirements:* Python `>= 3.12`.
 
-## GitHub Action
+---
+
+## 🚀 Quickstart & CLI Commands
+
+### 1. Index a Repository
+Scans source files, resolves imports/calls, and generates a deterministic `.scopemap/graph.json` cache:
+
+```bash
+scopemap index .
+```
+
+### 2. Analyze Changes (Blast-Radius Impact)
+Calculates which downstream components and tests are affected by current uncommitted or diffed changes:
+
+```bash
+# Analyze uncommitted working tree changes against HEAD
+scopemap analyze --repo . --diff HEAD
+
+# Output as an ASCII dependency tree
+scopemap analyze --repo . --diff HEAD~1 --format tree
+
+# Interactive terminal explorer (requires scopemap[viz])
+scopemap analyze --repo . --diff HEAD~1 --interactive
+
+# Output machine-readable JSON report
+scopemap analyze --repo . --diff origin/main...HEAD --format json --output report.json
+
+# Filter to affected test files only
+scopemap analyze --repo . --diff HEAD~1 --tests-only
+```
+
+### 3. Compare Two Branches or Commits
+Computes full differential impact between two git references:
+
+```bash
+scopemap compare --repo . --base main --head feature/new-engine
+```
+
+### 4. Enforce Architecture Rules
+Validates architectural layer boundaries defined in `scopemap.toml`:
+
+```bash
+scopemap architecture check --repo .
+```
+
+
+Example `scopemap.toml`:
+```toml
+[layers]
+domain = "src/domain"
+services = "src/services"
+adapters = "src/adapters"
+
+[[rules]]
+name = "domain-cannot-import-adapters"
+from = "domain"
+deny = ["adapters"]
+
+[[rules]]
+name = "services-cannot-import-adapters"
+from = "services"
+deny = ["adapters"]
+```
+
+
+### 5. Install Git Pre-Commit Hook
+Installs a lightweight advisory or blocking pre-commit hook into `.git/hooks/pre-commit`:
+
+```bash
+# Advisory hook (warns on commit)
+scopemap install-hook --repo .
+
+# Blocking hook (fails commit if impact or architecture violations exist)
+scopemap install-hook --repo . --fail-on impact --force
+```
+
+---
+
+## 🤖 GitHub Action
+
+Integrate ScopeMap directly into pull request workflows with zero cloud accounts:
 
 ```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0
-- uses: <owner>/ScopeMap@v0.6
-  with:
-    diff-range: origin/main...HEAD
-    fail-on: none # or impact | architecture
+name: ScopeMap Analysis
+on: [pull_request]
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: POORNA-12/ScopeMap@v0.10.0
+        with:
+          diff-range: ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
+          fail-on: none # or impact | architecture
 ```
 
-Posts the impact report as a PR comment and writes
-`scopemap-report.md`. Same engine as the CLI; no cloud service.
+---
 
+## 🧠 Optional Privacy-Preserving AI Explanations
+
+ScopeMap can optionally enrich deterministic evidence trails with human-readable change summaries using local (Ollama) or OpenAI-compatible models. **Evidence is strictly sanitized, and no source files are uploaded.**
+
+```bash
+# Using local Ollama (100% offline)
+scopemap analyze --repo . --diff HEAD~1 --explain ollama --model qwen2.5-coder:7b
+
+# Using OpenAI-compatible endpoint
+export SCOPEMAP_OPENAI_API_KEY="sk-..."
+scopemap analyze --repo . --diff HEAD~1 --explain openai --model gpt-4o-mini
+```
+
+---
+
+## 📄 License
+
+MIT License. See [LICENSE](LICENSE) for details.

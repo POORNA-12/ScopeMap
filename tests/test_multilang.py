@@ -39,9 +39,11 @@ def _mixed_repo(tmp_path: Path) -> Path:
 def test_languages_and_counts(tmp_path: Path) -> None:
     graph = build_graph(_mixed_repo(tmp_path))
     assert graph.meta["languages"] == ["js", "python", "ts"]
-    assert graph.meta["parsers"]["python"]["files_indexed"] == 5
-    assert graph.meta["parsers"]["ts"]["files_indexed"] == 3
-    assert graph.meta["parsers"]["js"]["files_indexed"] == 3
+    parsers = graph.meta["parsers"]
+    assert isinstance(parsers, dict)
+    assert parsers["python"]["files_indexed"] == 5
+    assert parsers["ts"]["files_indexed"] == 3
+    assert parsers["js"]["files_indexed"] == 3
 
 
 def test_no_id_collisions(tmp_path: Path) -> None:

@@ -43,10 +43,11 @@ Resolution values:
 direct            same-file or directly imported name called plainly
 import-resolved   import string resolved to a repo file
 same-module       def and call in same module
-unresolved        target unknown, preserved as unknown:<name>
+unresolved        target unknown or external package, preserved as unknown:<name>
 dynamic           importlib / getattr / registry / import * / variable target
-external          stdlib or third-party, no repo edge
+external          reserved for future package-level resolution; third-party imports currently emit unknown:<name> with unresolved
 ```
+
 
 Unresolved example (preserved, never dropped):
 

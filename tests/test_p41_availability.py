@@ -34,7 +34,7 @@ def test_core_imports_without_optional_deps(monkeypatch) -> None:  # type: ignor
     for name in blocked:
         monkeypatch.setitem(sys.modules, name, None)
     for module in ("scopemap.tree_sitter_base", "scopemap.ts_parser", "scopemap.js_parser"):
-        sys.modules.pop(module, None)
+        monkeypatch.delitem(sys.modules, module, raising=False)
     from scopemap.js_parser import JavaScriptParser
     from scopemap.ts_parser import TypeScriptParser
 
@@ -62,8 +62,12 @@ def test_unavailable_parser_warns_and_skips(tmp_path: Path) -> None:
     target = tmp_path / "ghost.zzx"
     target.write_text("zzz\n", encoding="utf-8")
     graph = build_graph(tmp_path)
-    assert any("dead parser unavailable" in warning and "1 file(s)" in warning for warning in graph.meta["warnings"])
-    assert graph.meta["parsers"]["dead"]["files_skipped"] == 1
+    warnings = graph.meta["warnings"]
+    assert isinstance(warnings, list)
+    assert any("dead parser unavailable" in str(warning) and "1 file(s)" in str(warning) for warning in warnings)
+    parsers = graph.meta["parsers"]
+    assert isinstance(parsers, dict)
+    assert parsers["dead"]["files_skipped"] == 1
     assert "file:ghost.zzx" not in graph.nodes
 
 

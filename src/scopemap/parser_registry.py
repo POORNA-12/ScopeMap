@@ -75,3 +75,8 @@ def ensure_default_parsers() -> None:
     register_parser(PythonParser())
     register_parser(TypeScriptParser())
     register_parser(JavaScriptParser())
+
+
+def reset_registry() -> None:
+    """Clear registered parsers so defaults will be reloaded on next access."""
+    _REGISTRY.clear()

@@ -106,9 +106,10 @@ def test_cli_explain_unavailable_still_reports(tmp_path: Path, capsys: pytest.Ca
 
 def test_http_500_degrades(monkeypatch: pytest.MonkeyPatch) -> None:
     import urllib.error
+    from email.message import Message
 
     def fail(request: object, timeout: object = None) -> _FakeResponse:
-        raise urllib.error.HTTPError(str(request), 500, "boom", {}, None)
+        raise urllib.error.HTTPError(str(request), 500, "boom", Message(), None)
 
     monkeypatch.setattr(urllib.request, "urlopen", fail)
     assert OllamaExplanationProvider().explain(FINDING) == ""
@@ -140,9 +141,10 @@ def test_missing_and_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_model_not_found_degrades(monkeypatch: pytest.MonkeyPatch) -> None:
     import urllib.error
+    from email.message import Message
 
     def fail(request: object, timeout: object = None) -> _FakeResponse:
-        raise urllib.error.HTTPError(str(request), 404, "no such model", {}, None)
+        raise urllib.error.HTTPError(str(request), 404, "no such model", Message(), None)
 
     monkeypatch.setattr(urllib.request, "urlopen", fail)
     provider = OllamaExplanationProvider(model="no-such-model")
@@ -155,6 +157,7 @@ def test_request_shape_and_sanitize(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def fake_urlopen(request: object, timeout: object = None) -> _FakeResponse:
         assert isinstance(request, urllib.request.Request)
+        assert isinstance(request.data, (bytes, bytearray))
         seen.update(json.loads(request.data.decode("utf-8")))
         return _FakeResponse({"response": "ok"})
 
