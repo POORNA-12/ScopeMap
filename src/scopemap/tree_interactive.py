@@ -142,9 +142,9 @@ def run_interactive(
         try:
             while labels:
                 choice = input_fn(f"Expand [{', '.join(labels)}] (Enter next, q quit): ").strip().lower()
-                if choice in ("", "n", "next"):
+                if choice == "":
                     break
-                if choice in ("q", "quit", "exit"):
+                if choice == "q":
                     return 0
                 if choice.isdigit() and 1 <= int(choice) <= len(item.groups):
                     name, members = item.groups[int(choice) - 1]
@@ -153,6 +153,7 @@ def run_interactive(
                     labels = [label for label in labels if not label.startswith(f"{choice} ")]
                 else:
                     print_fn(f"Unknown choice {choice!r}; Enter continues, q quits.")
+            print_fn("")
         except (EOFError, KeyboardInterrupt):
             print_fn("")
             return 0

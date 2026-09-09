@@ -11,7 +11,7 @@ ScopeMap is a local-first, deterministic change-impact analysis engine. It extra
 * **100% Stdlib-Only Core:** Zero mandatory runtime dependencies. Built strictly on Python's standard library (`ast`, `pathlib`, `json`, `argparse`, `subprocess`, `hashlib`).
 * **Multi-Language Support:** Python AST engine built-in; optional high-performance Tree-sitter parsers for TypeScript (`.ts`, `.tsx`, `.mts`, `.cts`) and JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`).
 * **Deterministic Reverse BFS:** Traces caller and import dependents with visited sets, cycle safety, configurable depth caps, and exact line-level evidence.
-* **Visual & Structured Outputs:** Formats impact reports as human-readable text, structured JSON, ASCII trees (`--format tree`), or an interactive TUI explorer (`--interactive`).
+* **Visual & Structured Outputs:** Formats impact reports as human-readable text, structured JSON, ASCII trees (`--format tree`), interactive terminal TUI (`--interactive`), or standalone offline HTML visual reports (`--format html`).
 * **Zero-Worktree-Mutation Branch Diffs:** Compares branches via `git archive` materialized trees without touching your active working directory.
 * **Architecture Boundary Guard:** Enforces layer rules (e.g. `domain` cannot import `adapters`) via `scopemap.toml`.
 * **CI & Pre-Commit Ready:** Includes an advisory/blocking Git pre-commit hook installer and a zero-cloud GitHub Action.
@@ -62,6 +62,9 @@ scopemap analyze --repo . --diff HEAD~1 --format tree
 
 # Interactive terminal explorer (requires scopemap[viz])
 scopemap analyze --repo . --diff HEAD~1 --interactive
+
+# Standalone offline HTML visual report (zero server, opens in any browser)
+scopemap analyze --repo . --diff HEAD~1 --format html --output report.html
 
 # Output machine-readable JSON report
 scopemap analyze --repo . --diff origin/main...HEAD --format json --output report.json

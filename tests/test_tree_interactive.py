@@ -147,3 +147,44 @@ def test_cli_interactive_falls_back_without_tty(tmp_path: Path, capsys: pytest.C
     out = capsys.readouterr().out
     assert "showing static tree" in out
     assert "Changed:" in out
+
+
+def test_run_interactive_empty_enter_emits_newline_between_findings() -> None:
+    finding1 = _finding()
+    finding2 = Finding(
+        analyzer="impact",
+        severity="medium",
+        title="shop.app.other may affect 1 component(s)",
+        description="d",
+        evidence=(),
+        affected=("python:shop.app:checkout",),
+    )
+    answers = iter(["", ""])
+    printed: list[str] = []
+    assert (
+        run_interactive([finding1, finding2], _graph(), input_fn=lambda _: next(answers), print_fn=printed.append) == 0
+    )
+    assert printed == ["", ""]
+
+
+def test_run_interactive_invalid_choice_recovers_and_emits_single_newline_on_advance() -> None:
+    answers = iter(["11", ""])
+    printed: list[str] = []
+    assert run_interactive([_finding()], _graph(), input_fn=lambda _: next(answers), print_fn=printed.append) == 0
+    assert len(printed) == 2
+    assert "Unknown choice '11'" in printed[0]
+    assert printed[1] == ""
+
+
+def test_run_interactive_quit_emits_no_trailing_newline() -> None:
+    printed: list[str] = []
+    assert run_interactive([_finding()], _graph(), input_fn=lambda _: "q", print_fn=printed.append) == 0
+    assert "" not in printed
+
+
+def test_run_interactive_bucket_expansion_emits_newline_only_on_advance() -> None:
+    answers = iter(["1", ""])
+    printed: list[str] = []
+    assert run_interactive([_finding()], _graph(), input_fn=lambda _: next(answers), print_fn=printed.append) == 0
+    assert any("shop.app.checkout" in line for line in printed)
+    assert printed[-1] == ""

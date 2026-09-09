@@ -85,7 +85,7 @@ def test_extras_explicit_no_nesting() -> None:
         import tomli as tomllib  # type: ignore[no-redef]
     project = tomllib.loads((Path(__file__).parent.parent / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     extras = project["optional-dependencies"]
-    assert set(extras) == {"ts", "js", "viz", "all"}
+    assert set(extras) == {"ts", "js", "viz", "bokeh", "all"}
     for name, pinned in extras.items():
         assert pinned, name
         assert not [item for item in pinned if "scopemap[" in item], name

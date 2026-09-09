@@ -123,3 +123,64 @@ def test_summary_dedupe_and_cap(tmp_path: Path, capsys: pytest.CaptureFixture[st
     for finding in analyze(repo, "HEAD", build_graph(repo)):
         keys = [(item.file, item.line, item.expression) for item in finding.evidence]
         assert len(keys) == len(set(keys)), "evidence must be deduplicated"
+
+
+def test_analyze_format_html_stdout(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from test_impact import CORE_V1, CORE_V2, SHOP, _init_repo, _modify
+
+    repo = _init_repo(tmp_path / "repo", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    _modify(repo, "pay/core.py", CORE_V2)
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--format", "html"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("<!doctype html>")
+    assert "ScopeMap Impact Report" in out
+    assert "pay/core.py" in out
+
+
+def test_analyze_format_html_output_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from test_impact import CORE_V1, CORE_V2, SHOP, _init_repo, _modify
+
+    repo = _init_repo(tmp_path / "repo", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    _modify(repo, "pay/core.py", CORE_V2)
+    out_file = tmp_path / "custom" / "report.html"
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--format", "html", "--output", str(out_file)]) == 0
+    assert out_file.is_file()
+    text = out_file.read_text(encoding="utf-8")
+    assert text.startswith("<!doctype html>")
+    assert "ScopeMap Impact Report" in text
+    err = capsys.readouterr().err
+    assert "HTML report written to" in err
+
+
+def test_cli_rejects_interactive_html(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from test_impact import _init_repo
+
+    repo = _init_repo(tmp_path / "repo", {"a.py": "x = 1\n"})
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--interactive", "--format", "html"]) == 2
+    assert "cannot be combined with --format html" in capsys.readouterr().out
+
+
+def test_analyze_format_html_bokeh_renderer(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from test_impact import CORE_V1, CORE_V2, SHOP, _init_repo, _modify
+
+    repo = _init_repo(tmp_path / "repo", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    _modify(repo, "pay/core.py", CORE_V2)
+    assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--format", "html", "--renderer", "bokeh"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("<!doctype html>")
+    assert "Bokeh Engine" in out
+
+
+def test_analyze_bokeh_missing_fallback_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import unittest.mock as mock
+
+    from test_impact import CORE_V1, CORE_V2, SHOP, _init_repo, _modify
+
+    repo = _init_repo(tmp_path / "repo", {"pay/core.py": CORE_V1, "shop/app.py": SHOP})
+    _modify(repo, "pay/core.py", CORE_V2)
+
+    with mock.patch("scopemap.bokeh_graph.is_bokeh_available", return_value=False):
+        assert main(["analyze", "--repo", str(repo), "--diff", "HEAD", "--format", "html", "--renderer", "bokeh"]) == 0
+        captured = capsys.readouterr()
+        assert "Warning: Bokeh is not installed" in captured.err
+        assert "Native SVG" in captured.out

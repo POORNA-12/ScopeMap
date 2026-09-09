@@ -66,9 +66,15 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("--output", type=Path, default=None, help="Write the report to a file.")
     analyze_parser.add_argument(
         "--format",
-        choices=["text", "json", "tree"],
+        choices=["text", "json", "tree", "html"],
         default="text",
         help="Report format (default: text).",
+    )
+    analyze_parser.add_argument(
+        "--renderer",
+        choices=["svg", "bokeh"],
+        default="svg",
+        help="HTML graph renderer (default: svg; bokeh requires scopemap[bokeh]).",
     )
     analyze_parser.add_argument(
         "--interactive",
@@ -225,6 +231,53 @@ def _graph_warnings(graph: Graph) -> list[str]:
     return [str(item) for item in raw]
 
 
+def _command_analyze_html(
+    repo: Path,
+    graph: Graph,
+    findings: list[Finding],
+    warnings: list[str],
+    diff: str,
+    output: Path | None,
+    fail_on: str,
+    renderer: str = "svg",
+) -> int:
+    from scopemap.html_report import render_html_report
+
+    if renderer == "bokeh":
+        from scopemap.bokeh_graph import is_bokeh_available
+
+        if not is_bokeh_available():
+            print(
+                "Warning: Bokeh is not installed. To use the Bokeh interactive graph renderer, "
+                "run: pip install 'scopemap[bokeh]'. Falling back to native SVG renderer.",
+                file=sys.stderr,
+            )
+            renderer = "svg"
+
+    rendered = render_html_report(findings, graph, repo, diff, renderer=renderer)
+    if output is not None:
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            tmp_out = output.with_name(f".{output.name}.tmp")
+            tmp_out.write_text(rendered, encoding="utf-8")
+            tmp_out.replace(output)
+            print(f"HTML report written to {output}", file=sys.stderr)
+        except OSError as error:
+            print(f"Cannot write report to {output}: {error}", file=sys.stderr)
+            return 1
+    else:
+        sys.stdout.write(rendered)
+        if not rendered.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    if fail_on == "impact":
+        return 1 if findings else 0
+    if fail_on == "architecture":
+        return _fail_on_architecture(repo, graph)
+    return 0
+
+
 def _command_analyze(
     repo: Path,
     diff: str,
@@ -239,9 +292,10 @@ def _command_analyze(
     model: str | None,
     format_name: str = "text",
     interactive: bool = False,
+    renderer: str = "svg",
 ) -> int:
-    if interactive and format_name == "json":
-        print("error: --interactive cannot be combined with --format json (interactive implies tree view).")
+    if interactive and format_name in ("json", "html"):
+        print(f"error: --interactive cannot be combined with --format {format_name} (interactive implies tree view).")
         return 2
     graph = build_graph(repo)
     warnings = _graph_warnings(graph)
@@ -252,7 +306,7 @@ def _command_analyze(
             if format_name == "json":
                 print(json.dumps({"error": message, "warnings": warnings}, indent=2, sort_keys=True))
             else:
-                print(message)
+                print(message, file=sys.stderr if format_name == "html" and output is None else sys.stdout)
             return 1
         try:
             report = load_coverage_json(coverage_path)
@@ -260,7 +314,7 @@ def _command_analyze(
             if format_name == "json":
                 print(json.dumps({"error": str(error), "warnings": warnings}, indent=2, sort_keys=True))
             else:
-                print(str(error))
+                print(str(error), file=sys.stderr if format_name == "html" and output is None else sys.stdout)
             return 1
     try:
         if staged:
@@ -271,10 +325,13 @@ def _command_analyze(
         if format_name == "json":
             print(json.dumps({"error": str(error), "warnings": warnings}, indent=2, sort_keys=True))
         else:
-            print(str(error))
+            print(str(error), file=sys.stderr if format_name == "html" and output is None else sys.stdout)
         return 1
     if format_name == "json":
         return _command_analyze_json(repo, graph, findings, warnings, output, fail_on)
+    if format_name == "html":
+        diff_str = "staged" if staged else diff
+        return _command_analyze_html(repo, graph, findings, warnings, diff_str, output, fail_on, renderer=renderer)
     if interactive:
         return _command_analyze_interactive(repo, graph, findings, warnings, output, fail_on)
     lines: list[str] = []
@@ -572,6 +629,7 @@ def main(argv: list[str] | None = None) -> int:
         args.model,
         args.format,
         args.interactive,
+        getattr(args, "renderer", "svg"),
     )
 
 
