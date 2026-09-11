@@ -625,10 +625,6 @@ def render_html_report(
       border-color: var(--accent);
       box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
     }}
-      font-size: 13px;
-      min-width: 240px;
-    }}
-    .search-input:focus {{ outline: none; border-color: var(--accent); }}
     .checkbox-label {{
       display: inline-flex;
       align-items: center;
@@ -790,7 +786,7 @@ def render_html_report(
       height: 100% !important;
     }}
     svg.blast-graph {{ width: 100%; min-height: 700px; display: block; }}
-    .graph-node {{ cursor: pointer; }}
+    .graph-node {{ cursor: pointer; transition: opacity 0.2s ease; }}
     .graph-node rect {{ rx: 6; ry: 6; transition: fill 0.15s ease, stroke 0.15s ease; }}
     .graph-node text {{
       font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -798,9 +794,11 @@ def render_html_report(
       fill: #f8fafc;
       user-select: none;
     }}
-    .graph-edge {{ stroke: #334155; stroke-width: 1.5; fill: none; }}
+    .graph-edge {{ stroke: #334155; stroke-width: 1.5; fill: none; transition: opacity 0.2s ease; }}
     .graph-edge.active {{ stroke: var(--accent); stroke-width: 2.5; }}
     .graph-node.active rect {{ stroke: var(--accent); stroke-width: 2.5; }}
+    .graph-node.dimmed {{ opacity: 0.15; pointer-events: none; }}
+    .graph-edge.dimmed {{ opacity: 0.1; }}
     .truncation-banner {{
       background: rgba(245, 158, 11, 0.15);
       border: 1px solid rgba(245, 158, 11, 0.3);
@@ -1344,6 +1342,7 @@ def render_html_report(
         const query = (searchInput.value || "").trim().toLowerCase();
 
         const findings = DATA.findings || [];
+        const visibleFindingIds = new Set();
         let visibleCount = 0;
 
         if (findings.length === 0) {{
@@ -1352,6 +1351,7 @@ def render_html_report(
           empty.textContent = "No potentially affected components found.";
           findingsContainer.appendChild(empty);
           statusText.textContent = "0 findings";
+          updateGraphFilter(visibleFindingIds);
           return;
         }}
 
@@ -1374,6 +1374,7 @@ def render_html_report(
           }}
 
           visibleCount++;
+          visibleFindingIds.add(finding.id);
 
           const card = document.createElement("div");
           card.className = "finding-card" + (activeFindingId === finding.id ? " active" : "");
@@ -1459,6 +1460,8 @@ def render_html_report(
           noMatch.textContent = "No findings match the current filters.";
           findingsContainer.appendChild(noMatch);
         }}
+
+        updateGraphFilter(visibleFindingIds);
       }}
 
       function selectFinding(findingId) {{
@@ -1478,6 +1481,21 @@ def render_html_report(
           const isMatch = e.getAttribute("data-finding-id") === findingId || !findingId;
           e.classList.toggle("active", isMatch);
           e.setAttribute("marker-end", isMatch && findingId ? "url(#arrow-active)" : "url(#arrow)");
+        }});
+      }}
+
+      function updateGraphFilter(visibleFindingIds) {{
+        const totalFindings = (DATA.findings || []).length;
+        const isFiltering = visibleFindingIds && visibleFindingIds.size < totalFindings;
+        document.querySelectorAll(".graph-node").forEach(n => {{
+          const fid = n.getAttribute("data-finding-id");
+          const isDim = isFiltering && fid && !visibleFindingIds.has(fid);
+          n.classList.toggle("dimmed", isDim);
+        }});
+        document.querySelectorAll(".graph-edge").forEach(e => {{
+          const fid = e.getAttribute("data-finding-id");
+          const isDim = isFiltering && fid && !visibleFindingIds.has(fid);
+          e.classList.toggle("dimmed", isDim);
         }});
       }}
 
@@ -1646,6 +1664,10 @@ def render_html_report(
           let label = node.label || "";
           if (label.length > 28) label = label.slice(0, 26) + "...";
           text.textContent = label;
+
+          const titleEl = document.createElementNS("http://www.w3.org/2000/svg", "title");
+          titleEl.textContent = node.label || node.id || "";
+          g.appendChild(titleEl);
 
           g.appendChild(rect);
           g.appendChild(text);
