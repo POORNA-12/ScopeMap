@@ -4,7 +4,38 @@ ScopeMap is built to seamlessly integrate into AI coding agents (Antigravity, Ge
 
 ---
 
-## 1. Quick Skill Registration
+## 1. ScopeMap Installation Options
+
+ScopeMap can be installed via **PyPI**, directly from **GitHub (Git)**, or as a **Local Editable Clone**:
+
+### Option A: Direct from GitHub (Recommended for latest dev version)
+```bash
+# Core installation directly from GitHub repository
+pip install git+https://github.com/POORNA-12/ScopeMap.git
+
+# With all extras (TypeScript, JavaScript, Bokeh visualizer)
+pip install "scopemap[all] @ git+https://github.com/POORNA-12/ScopeMap.git"
+```
+
+### Option B: PyPI Package (`pip`)
+```bash
+# Core installation
+pip install scopemap
+
+# With all extras
+pip install "scopemap[all]"
+```
+
+### Option C: Local Editable Install (For development & testing)
+```bash
+git clone https://github.com/POORNA-12/ScopeMap.git
+cd ScopeMap
+pip install -e ".[all]"
+```
+
+---
+
+## 2. Quick Skill Registration
 
 ### For Antigravity / Gemini CLI Agents
 Copy the [`SKILL.md`](file:///.agents/skills/scopemap/SKILL.md) file into your project's `.agents/skills/scopemap/` directory:

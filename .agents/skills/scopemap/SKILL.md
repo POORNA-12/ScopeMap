@@ -18,6 +18,23 @@ Activate this skill when:
 
 ---
 
+## ScopeMap Installation
+
+ScopeMap can be installed either directly from **GitHub (Git)** or via **PyPI (`pip`)**:
+
+```bash
+# Option 1: Direct from GitHub repository (Latest dev version)
+pip install git+https://github.com/POORNA-12/ScopeMap.git
+
+# Option 2: From PyPI
+pip install scopemap
+
+# Option 3: With all optional parsers (TypeScript, JavaScript, Bokeh visualizer)
+pip install "scopemap[all] @ git+https://github.com/POORNA-12/ScopeMap.git"
+```
+
+---
+
 ## Core Capabilities & Workflows
 
 ### 1. Change-Impact Analysis (Blast Radius)
