@@ -134,7 +134,7 @@ def summarize(graph: Graph) -> dict[str, int]:
     }
 
 
-_LANGUAGE_LABELS: dict[str, str] = {"python": "Python", "ts": "TypeScript", "js": "JavaScript"}
+_LANGUAGE_LABELS: dict[str, str] = {"python": "Python", "ts": "TypeScript", "js": "JavaScript", "go": "Go"}
 
 
 def _language_file_counts(graph: Graph) -> list[tuple[str, int]]:

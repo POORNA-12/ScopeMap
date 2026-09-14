@@ -68,6 +68,7 @@ def ensure_default_parsers() -> None:
     """
     if _REGISTRY:
         return
+    from scopemap.go_parser import GoParser
     from scopemap.js_parser import JavaScriptParser
     from scopemap.python_parser import PythonParser
     from scopemap.ts_parser import TypeScriptParser
@@ -75,6 +76,7 @@ def ensure_default_parsers() -> None:
     register_parser(PythonParser())
     register_parser(TypeScriptParser())
     register_parser(JavaScriptParser())
+    register_parser(GoParser())
 
 
 def reset_registry() -> None:

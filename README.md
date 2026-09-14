@@ -9,32 +9,42 @@ ScopeMap is a local-first, deterministic change-impact analysis engine. It extra
 ## ⚡ Key Highlights
 
 * **100% Stdlib-Only Core:** Zero mandatory runtime dependencies. Built strictly on Python's standard library (`ast`, `pathlib`, `json`, `argparse`, `subprocess`, `hashlib`).
-* **Multi-Language Support:** Python AST engine built-in; optional high-performance Tree-sitter parsers for TypeScript (`.ts`, `.tsx`, `.mts`, `.cts`) and JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`).
+* **Multi-Language Support:** Python AST engine built-in; optional high-performance Tree-sitter parsers for:
+  - **Python** (`.py`)
+  - **TypeScript** (`.ts`, `.tsx`, `.mts`, `.cts`)
+  - **JavaScript** (`.js`, `.jsx`, `.mjs`, `.cjs`)
+  - **Go** (`.go` with `go.mod` module & package resolution)
 * **Deterministic Reverse BFS:** Traces caller and import dependents with visited sets, cycle safety, configurable depth caps, and exact line-level evidence.
-* **Visual & Structured Outputs:** Formats impact reports as human-readable text, structured JSON, ASCII trees (`--format tree`), interactive terminal TUI (`--interactive`), or standalone offline HTML visual reports (`--format html`).
+* **Dual Visualization Engines:** Formats impact reports as human-readable text, structured JSON, ASCII trees (`--format tree`), interactive terminal TUI (`--interactive`), or standalone offline HTML visual reports with interactive SVG or rich Bokeh network graphs (`--format html --renderer bokeh`).
 * **Zero-Worktree-Mutation Branch Diffs:** Compares branches via `git archive` materialized trees without touching your active working directory.
 * **Architecture Boundary Guard:** Enforces layer rules (e.g. `domain` cannot import `adapters`) via `scopemap.toml`.
 * **CI & Pre-Commit Ready:** Includes an advisory/blocking Git pre-commit hook installer and a zero-cloud GitHub Action.
+* **AI Agent Skill Native:** Built-in AI Skill for Antigravity, Claude, OpenAI, and Cursor agents for automated blast-radius PR audits and targeted test runs.
 
 ---
 
 ## 📦 Installation
 
-ScopeMap is distributed as a standard Python package via `pip`:
+ScopeMap is distributed as a standard Python package via `pip` or directly from GitHub:
 
 ```bash
-# Core installation (Python AST only, zero external runtime dependencies)
+# Option 1: Core installation (Python AST only, zero external runtime dependencies)
 pip install scopemap
 
-# With TypeScript/JavaScript Tree-sitter parsers
-pip install "scopemap[ts]"
-pip install "scopemap[js]"
+# Option 2: With individual optional language parsers
+pip install "scopemap[go]"     # Go Tree-sitter parser
+pip install "scopemap[ts]"     # TypeScript Tree-sitter parser
+pip install "scopemap[js]"     # JavaScript Tree-sitter parser
 
-# With interactive Rich terminal explorer
-pip install "scopemap[viz]"
+# Option 3: With visualization engines
+pip install "scopemap[bokeh]"  # Standalone Bokeh interactive network visualizer
+pip install "scopemap[viz]"    # Rich terminal TUI interactive explorer
 
-# Full suite (All parsers + interactive visualization)
+# Option 4: Full suite (All parsers + visualizers)
 pip install "scopemap[all]"
+
+# Install latest development build directly from GitHub
+pip install "scopemap[all] @ git+https://github.com/POORNA-12/ScopeMap.git"
 ```
 
 *Requirements:* Python `>= 3.12`.
@@ -44,7 +54,7 @@ pip install "scopemap[all]"
 ## 🚀 Quickstart & CLI Commands
 
 ### 1. Index a Repository
-Scans source files, resolves imports/calls, and generates a deterministic `.scopemap/graph.json` cache:
+Scans source files across Python, TypeScript, JavaScript, and Go, resolves imports/calls, and generates a deterministic `.scopemap/graph.json` cache:
 
 ```bash
 scopemap index .
@@ -63,8 +73,11 @@ scopemap analyze --repo . --diff HEAD~1 --format tree
 # Interactive terminal explorer (requires scopemap[viz])
 scopemap analyze --repo . --diff HEAD~1 --interactive
 
-# Standalone offline HTML visual report (zero server, opens in any browser)
+# Standalone offline HTML visual report with SVG graph
 scopemap analyze --repo . --diff HEAD~1 --format html --output report.html
+
+# Interactive HTML report with Bokeh dual-layout network visualizer
+scopemap analyze --repo . --diff HEAD~1 --format html --renderer bokeh --output report.html
 
 # Output machine-readable JSON report
 scopemap analyze --repo . --diff origin/main...HEAD --format json --output report.json
@@ -87,7 +100,6 @@ Validates architectural layer boundaries defined in `scopemap.toml`:
 scopemap architecture check --repo .
 ```
 
-
 Example `scopemap.toml`:
 ```toml
 [layers]
@@ -105,7 +117,6 @@ name = "services-cannot-import-adapters"
 from = "services"
 deny = ["adapters"]
 ```
-
 
 ### 5. Install Git Pre-Commit Hook
 Installs a lightweight advisory or blocking pre-commit hook into `.git/hooks/pre-commit`:

@@ -1,0 +1,8 @@
+[layers]
+models = "src/scopemap/models.py"
+parsers = "src/scopemap"
+
+[[rules]]
+name = "models-cannot-import-parsers"
+from = "models"
+deny = ["parsers"]

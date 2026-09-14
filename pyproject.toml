@@ -18,6 +18,10 @@ js = [
     "tree-sitter>=0.21.0",
     "tree-sitter-javascript>=0.21.0",
 ]
+go = [
+    "tree-sitter>=0.21.0",
+    "tree-sitter-go>=0.21.0",
+]
 bokeh = [
     "bokeh>=3.0.0",
 ]
@@ -29,6 +33,7 @@ all = [
     "tree-sitter>=0.21.0",
     "tree-sitter-typescript>=0.21.0",
     "tree-sitter-javascript>=0.21.0",
+    "tree-sitter-go>=0.21.0",
     "rich>=13.7.0",
     "bokeh>=3.0.0",
 ]

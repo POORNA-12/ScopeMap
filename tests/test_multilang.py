@@ -10,6 +10,7 @@ import pytest
 pytest.importorskip("tree_sitter")
 pytest.importorskip("tree_sitter_typescript")
 pytest.importorskip("tree_sitter_javascript")
+pytest.importorskip("tree_sitter_go")
 
 from scopemap.cli import main
 from scopemap.graph_builder import build_graph
@@ -17,11 +18,12 @@ from scopemap.graph_builder import build_graph
 PY_FIXTURE = Path(__file__).parent / "fixtures" / "sample_repo"
 TS_FIXTURE = Path(__file__).parent / "fixtures" / "ts_repo"
 JS_FIXTURE = Path(__file__).parent / "fixtures" / "js_repo"
+GO_FIXTURE = Path(__file__).parent / "fixtures" / "go_repo"
 
 
 def _mixed_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
-    for fixture in (PY_FIXTURE, TS_FIXTURE, JS_FIXTURE):
+    for fixture in (PY_FIXTURE, TS_FIXTURE, JS_FIXTURE, GO_FIXTURE):
         for path in fixture.rglob("*"):
             if path.is_file():
                 target = repo / fixture.name.replace("_repo", "") / path.relative_to(fixture)
@@ -38,18 +40,19 @@ def _mixed_repo(tmp_path: Path) -> Path:
 
 def test_languages_and_counts(tmp_path: Path) -> None:
     graph = build_graph(_mixed_repo(tmp_path))
-    assert graph.meta["languages"] == ["js", "python", "ts"]
+    assert graph.meta["languages"] == ["go", "js", "python", "ts"]
     parsers = graph.meta["parsers"]
     assert isinstance(parsers, dict)
     assert parsers["python"]["files_indexed"] == 5
     assert parsers["ts"]["files_indexed"] == 3
     assert parsers["js"]["files_indexed"] == 3
+    assert parsers["go"]["files_indexed"] == 3
 
 
 def test_no_id_collisions(tmp_path: Path) -> None:
     graph = build_graph(_mixed_repo(tmp_path))
     prefixes = {node_id.split(":")[0] for node_id in graph.nodes}
-    assert prefixes <= {"file", "python", "ts", "js"}
+    assert prefixes <= {"file", "python", "ts", "js", "go"}
 
 
 def test_cross_language_never_guessed(tmp_path: Path) -> None:
@@ -59,7 +62,7 @@ def test_cross_language_never_guessed(tmp_path: Path) -> None:
     for edge in graph.edges:
         if edge.kind in ("CALLS", "CONTAINS", "DEFINES"):
             source_lang = edge.source.split(":")[0]
-            if edge.target.startswith(("python:", "ts:", "js:")):
+            if edge.target.startswith(("python:", "ts:", "js:", "go:")):
                 assert edge.target.split(":")[0] == source_lang or edge.source.startswith("file:")
 
 
@@ -69,10 +72,11 @@ def test_mixed_index_per_language_counts(tmp_path: Path, capsys: pytest.CaptureF
     repo = _mixed_repo(tmp_path)
     assert main(["index", str(repo)]) == 0
     out = capsys.readouterr().out
-    assert "Files scanned: 11" in out
+    assert "Files scanned: 14" in out
     assert "Python files: 5" in out
     assert "TypeScript files: 3" in out
     assert "JavaScript files: 3" in out
+    assert "Go files: 3" in out
 
 
 def _git(repo: Path, *args: str) -> None:
