@@ -1,5 +1,11 @@
 # ScopeMap
 
+[![GitHub Release](https://img.shields.io/github/v/release/POORNA-12/ScopeMap?color=blue&label=Release)](https://github.com/POORNA-12/ScopeMap/releases)
+[![Marketplace](https://img.shields.io/badge/Marketplace-ScopeMap-blue.svg?logo=github)](https://github.com/marketplace/actions/scopemap-change-impact-analysis)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/Tests-204%20Passed-success.svg)](https://github.com/POORNA-12/ScopeMap)
+
 > **Understand the full scope and blast-radius of a code change before you merge it.**
 
 ScopeMap is a local-first, deterministic change-impact analysis engine. It extracts syntax-derived dependency graphs with verifiable source code evidence, calculates precise downstream blast-radii across functions, classes, and modules, and enforces architectural boundaries without requiring cloud services or external API keys.
