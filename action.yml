@@ -1,5 +1,5 @@
-name: ScopeMap
-description: Deterministic Python change-impact analysis for pull requests.
+name: ScopeMap - Change-Impact Analysis
+description: Deterministic multi-language change-impact analysis for pull requests.
 author: ScopeMap Contributors
 inputs:
   github-token:
